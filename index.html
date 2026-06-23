@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Legal Recovery Tracker — Stanbic Recoveries</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --navy-deep: #0c2340;
+  --navy-mid: #163b63;
+  --navy-pale: #eef2f7;
+  --gold: #c9962e;
+  --gold-pale: #f3e3c0;
+  --ink: #1a1f29;
+  --muted: #5b6472;
+  --line: #d9dee6;
+  --bg: #f6f7f9;
+  --white: #ffffff;
+  --red: #a23b34;
+  --green: #3e7d59;
+  --amber: #b8862e;
+
+  --serif: "Source Serif 4", "Georgia", serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: "IBM Plex Mono", "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; font-size: 14px; }
+
+a { color: var(--navy-mid); }
+
+/* ---------- Layout shell ---------- */
+#app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  background: var(--navy-deep);
+  color: var(--white);
+  padding: 0 28px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--gold);
+}
+
+.topbar .brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.topbar .brand .mark {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.2px;
+}
+
+.topbar .brand .sub {
+  font-size: 12px;
+  color: var(--gold-pale);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-left: 1px solid rgba(255,255,255,0.25);
+  padding-left: 10px;
+}
+
+.topbar .who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--gold-pale);
+}
+
+.topbar .who button {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--white);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.topbar .who button:hover { background: rgba(255,255,255,0.08); }
+
+main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; width: 100%; }
+
+/* ---------- Login screen ---------- */
+.login-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--navy-deep);
+  background-image: linear-gradient(165deg, var(--navy-deep) 0%, #081729 100%);
+}
+
+.login-card {
+  background: var(--white);
+  width: 380px;
+  padding: 36px 32px 30px;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  position: relative;
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: var(--gold);
+  border-radius: 6px 6px 0 0;
+}
+
+.login-card .docket-no {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 18px;
+}
+
+.login-card h1 {
+  font-family: var(--serif);
+  font-size: 22px;
+  margin: 0 0 4px;
+  color: var(--navy-deep);
+}
+.login-card p.tag { color: var(--muted); margin: 0 0 26px; font-size: 13px; }
+
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy-mid);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.field input, .field select, .field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--white);
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 0;
+  border-color: var(--gold);
+}
+.field textarea { resize: vertical; min-height: 70px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 13px;
+}
+.btn-primary { background: var(--navy-deep); color: var(--white); }
+.btn-primary:hover { background: var(--navy-mid); }
+.btn-gold { background: var(--gold); color: var(--navy-deep); }
+.btn-gold:hover { background: #d9a93f; }
+.btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn-ghost:hover { background: var(--navy-pale); }
+.btn-block { width: 100%; }
+.btn-danger { background: transparent; border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: #fbeceb; }
+
+.error-msg {
+  background: #fbeceb;
+  color: var(--red);
+  border: 1px solid #e6c5c2;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+
+/* ---------- Page header ---------- */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.page-head h2 {
+  font-family: var(--serif);
+  font-size: 24px;
+  margin: 0;
+  color: var(--navy-deep);
+}
+.page-head .eyebrow {
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* ---------- Stat cards ---------- */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card .n {
+  font-family: var(--serif);
+  font-size: 26px;
+  color: var(--navy-deep);
+  line-height: 1;
+}
+.stat-card .l {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.stat-card.accent { border-top: 3px solid var(--gold); }
+.stat-card.total { border-top: 3px solid var(--navy-deep); }
+
+/* ---------- Toolbar ---------- */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.toolbar input[type="search"], .toolbar select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--white);
+}
+.toolbar input[type="search"] { min-width: 220px; }
+.toolbar .spacer { flex: 1; }
+
+/* ---------- Table ---------- */
+.table-wrap {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  background: var(--navy-pale);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; cursor: pointer; }
+
+.acct {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--navy-mid);
+}
+.empty-row td {
+  text-align: center;
+  padding: 40px 10px;
+  color: var(--muted);
+}
+
+/* ---------- Stage badges ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+
+.stage-Demand-Letter { background: #eef2f7; color: var(--navy-mid); }
+.stage-Demand-Letter::before { background: var(--navy-mid); }
+.stage-Filing { background: #f3e9d6; color: var(--amber); }
+.stage-Filing::before { background: var(--amber); }
+.stage-Hearing { background: #fdeedb; color: #b15c1f; }
+.stage-Hearing::before { background: #b15c1f; }
+.stage-Judgment { background: #e6e9f5; color: #3f4a8f; }
+.stage-Judgment::before { background: #3f4a8f; }
+.stage-Execution { background: #f3e3c0; color: var(--gold); }
+.stage-Execution::before { background: var(--gold); }
+.stage-Closed { background: #e3efe7; color: var(--green); }
+.stage-Closed::before { background: var(--green); }
+
+.status-pill {
+  font-size: 11px;
+  color: var(--muted);
+}
+.status-On-Hold { color: var(--amber); }
+.status-Closed { color: var(--green); }
+.status-Written-Off { color: var(--red); }
+
+/* ---------- Modal / drawer ---------- */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,20,35,0.5);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  z-index: 50;
+}
+.overlay.center { align-items: center; justify-content: center; }
+
+.drawer {
+  background: var(--bg);
+  width: 560px;
+  max-width: 92vw;
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: -10px 0 40px rgba(0,0,0,0.25);
+}
+
+.modal-box {
+  background: var(--white);
+  width: 480px;
+  max-width: 92vw;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.drawer-head, .modal-head {
+  position: sticky;
+  top: 0;
+  background: var(--navy-deep);
+  color: var(--white);
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--gold);
+  z-index: 2;
+}
+.drawer-head h3, .modal-head h3 {
+  font-family: var(--serif);
+  font-size: 17px;
+  margin: 0;
+}
+.drawer-head .acct-line, .modal-head .acct-line {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--gold-pale);
+  margin-top: 3px;
+}
+.close-x {
+  background: transparent;
+  border: none;
+  color: var(--white);
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.close-x:hover { color: var(--gold); }
+
+.drawer-body, .modal-body { padding: 20px 22px; }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.form-grid .full { grid-column: 1 / -1; }
+
+.section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--gold);
+  font-weight: 700;
+  margin: 22px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.section-label:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+.case-summary {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.case-summary .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed var(--line);
+}
+.case-summary .row:last-child { border-bottom: none; }
+.case-summary .row .k { color: var(--muted); }
+.case-summary .row .v { font-weight: 600; text-align: right; }
+
+/* ---------- Timeline ---------- */
+.timeline { position: relative; padding-left: 26px; }
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 7px; top: 6px; bottom: 6px;
+  width: 2px;
+  background: var(--line);
+}
+.tl-item { position: relative; padding-bottom: 22px; }
+.tl-item:last-child { padding-bottom: 0; }
+.tl-dot {
+  position: absolute;
+  left: -26px; top: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 3px solid var(--navy-mid);
+}
+.tl-item.is-latest .tl-dot { border-color: var(--gold); background: var(--gold); }
+.tl-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.tl-stage { font-weight: 700; color: var(--navy-deep); font-size: 13.5px; }
+.tl-date { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.tl-outcome { font-size: 13px; margin-top: 4px; }
+.tl-next {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--amber);
+  background: #fdf6e8;
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.tl-remarks { font-size: 12.5px; color: var(--muted); margin-top: 4px; font-style: italic; }
+.tl-by { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.actions-row { display: flex; gap: 10px; margin-top: 20px; }
+
+footer.foot {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 18px 0 26px;
+}
+
+@media (max-width: 760px) {
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr; }
+  main { padding: 16px; }
+  .topbar { padding: 0 14px; }
+}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ============================================================
+// SUPABASE CONFIG
+// ------------------------------------------------------------
+// This is the SAME Supabase project used by the PPB Settlements
+// Filing app. The two apps are kept separate by Postgres schema:
+//   - PPB Settlements lives in the "public" schema (app_users, ppb_settlements)
+//   - Legal Tracker lives in its own "legal" schema (see schema.sql)
+// Nothing here touches PPB's tables or its login.
+// ============================================================
+
+const SUPABASE_URL = 'https://obcyqmyyspbxykmgwigx.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iY3lxbXl5c3BieHlrbWd3aWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NTIyNDEsImV4cCI6MjA5MzEyODI0MX0.vNa4rNlrSaSAjaAspJLlRv05Qx09EqhdduQDG8b5GQo';
+
+
+// ============================================================
+// LEGAL RECOVERY TRACKER — app.js
+// ============================================================
+
+// This Supabase project is shared with the PPB Settlements app.
+// db.schema scopes every sb.from(...) call below to the "legal"
+// schema, so it never touches PPB's "public" tables (app_users,
+// ppb_settlements). Login here uses our own legal.app_users table
+// with a hashed password check (same pattern as PPB) — not
+// Supabase Auth — so there's no email confirmation step and no
+// self-signup. Accounts are created by the admin directly in SQL.
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: 'legal' },
+});
+
+const STAGES = ["Demand Letter", "Filing", "Hearing", "Judgment", "Execution", "Closed"];
+const STATUSES = ["Active", "On Hold", "Closed", "Written Off"];
+
+let state = {
+  user: null,
+  cases: [],
+  filters: { search: "", stage: "", status: "Active" },
+};
+
+const root = document.getElementById("app");
+
+// ---------- helpers ----------
+const cls = (s) => s.replace(/\s+/g, "-");
+const money = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString();
+const fdate = (d) => d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const esc = (s) => (s ?? "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function toast(msg, isError) {
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.position = "fixed";
+  t.style.bottom = "24px";
+  t.style.left = "50%";
+  t.style.transform = "translateX(-50%)";
+  t.style.background = isError ? "#a23b34" : "#0c2340";
+  t.style.color = "#fff";
+  t.style.padding = "10px 18px";
+  t.style.borderRadius = "5px";
+  t.style.fontSize = "13px";
+  t.style.zIndex = "999";
+  t.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// ---------- auth (simple username/password, no Supabase Auth) ----------
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function init() {
+  const saved = localStorage.getItem("legal_tracker_session");
+  if (saved) {
+    try {
+      const u = JSON.parse(saved);
+      const { data } = await sb.from("app_users").select("id,username,full_name,role").eq("id", u.id).single();
+      if (data) {
+        state.user = data;
+        await loadCases();
+        renderApp();
+        return;
+      }
+    } catch (e) { /* fall through to login */ }
+    localStorage.removeItem("legal_tracker_session");
+  }
+  renderLogin();
+}
+
+function renderLogin() {
+  root.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="docket-no">REF: SBUL / RECOVERIES / LEGAL-TRACKER</div>
+        <h1>Legal Recovery Tracker</h1>
+        <p class="tag">Sign in to view accounts under legal action.</p>
+        <div id="loginError"></div>
+        <div class="field">
+          <label>Username</label>
+          <input id="loginUsername" placeholder="e.g. edgar" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
+        <p style="text-align:center; font-size:12px; color:var(--muted); margin-top:16px;">
+          No self-signup here — your admin creates accounts directly.
+        </p>
+      </div>
+    </div>
+  `;
+  document.getElementById("loginBtn").onclick = doLogin;
+  document.getElementById("loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+}
+
+async function doLogin() {
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  if (!username || !password) {
+    document.getElementById("loginError").innerHTML = `<div class="error-msg">Enter your username and password.</div>`;
+    return;
+  }
+  const hash = await sha256Hex(password);
+  const { data, error } = await sb
+    .from("app_users")
+    .select("id,username,full_name,role")
+    .eq("username", username)
+    .eq("password_hash", hash)
+    .maybeSingle();
+
+  if (error || !data) {
+    document.getElementById("loginError").innerHTML = `<div class="error-msg">Incorrect username or password.</div>`;
+    return;
+  }
+  state.user = data;
+  localStorage.setItem("legal_tracker_session", JSON.stringify({ id: data.id }));
+  await loadCases();
+  renderApp();
+}
+
+async function doLogout() {
+  localStorage.removeItem("legal_tracker_session");
+  state.user = null;
+  state.cases = [];
+  renderLogin();
+}
+
+// ---------- data ----------
+// ---------- data ----------
+async function loadCases() {
+  const { data, error } = await sb.from("legal_cases").select("*").order("updated_at", { ascending: false });
+  if (error) { toast("Could not load cases: " + error.message, true); return; }
+  state.cases = data || [];
+}
+
+async function loadHistory(caseId) {
+  const { data, error } = await sb
+    .from("case_stage_history")
+    .select("*")
+    .eq("case_id", caseId)
+    .order("date_entered", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) { toast("Could not load history: " + error.message, true); return []; }
+  return data || [];
+}
+
+// ---------- shell ----------
+function renderApp() {
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <span class="mark">Stanbic Recoveries</span>
+        <span class="sub">Legal Tracker</span>
+      </div>
+      <div class="who">
+        <span>${esc(state.user.full_name)} <span style="opacity:0.6">(${esc(state.user.role)})</span></span>
+        <button id="logoutBtn">Sign out</button>
+      </div>
+    </div>
+    <main id="main"></main>
+    <footer class="foot">Stanbic Bank Uganda — Recoveries &amp; Rehabilitation Unit · Internal use only</footer>
+  `;
+  document.getElementById("logoutBtn").onclick = doLogout;
+  renderDashboard();
+}
+
+function visibleCases() {
+  const f = state.filters;
+  return state.cases.filter((c) => {
+    if (f.stage && c.current_stage !== f.stage) return false;
+    if (f.status && c.status !== f.status) return false;
+    if (f.search) {
+      const s = f.search.toLowerCase();
+      if (!(`${c.account_number} ${c.customer_name} ${c.court_case_number || ""}`.toLowerCase().includes(s))) return false;
+    }
+    return true;
+  });
+}
+
+function renderDashboard() {
+  const main = document.getElementById("main");
+  const all = state.cases;
+  const counts = STAGES.reduce((acc, s) => { acc[s] = all.filter(c => c.current_stage === s).length; return acc; }, {});
+  const totalOutstanding = all.filter(c => c.status === "Active").reduce((sum, c) => sum + (Number(c.outstanding_balance) || 0), 0);
+
+  const rows = visibleCases();
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
+        <h2>Accounts Under Legal</h2>
+      </div>
+      <button class="btn btn-gold" id="newCaseBtn">+ Refer account to legal</button>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card total">
+        <div class="n">${all.length}</div>
+        <div class="l">Total cases</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="n">${money(totalOutstanding)}</div>
+        <div class="l">Outstanding (active)</div>
+      </div>
+      ${STAGES.filter(s => s !== "Closed").map(s => `
+        <div class="stat-card">
+          <div class="n">${counts[s] || 0}</div>
+          <div class="l">${esc(s)}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="searchBox" placeholder="Search account, customer or case no." value="${esc(state.filters.search)}" />
+      <select id="stageFilter">
+        <option value="">All stages</option>
+        ${STAGES.map(s => `<option value="${s}" ${state.filters.stage === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      </select>
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        ${STATUSES.map(s => `<option value="${s}" ${state.filters.status === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      </select>
+      <div class="spacer"></div>
+      <span style="font-size:12px;color:var(--muted)">${rows.length} of ${all.length} shown</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account No.</th>
+            <th>Customer</th>
+            <th>Outstanding</th>
+            <th>Stage</th>
+            <th>Status</th>
+            <th>Next action</th>
+            <th>Officer</th>
+          </tr>
+        </thead>
+        <tbody id="caseRows">
+          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="7">No cases match these filters.</td></tr>` :
+            rows.map(c => `
+              <tr data-id="${c.id}">
+                <td class="acct">${esc(c.account_number)}</td>
+                <td>${esc(c.customer_name)}</td>
+                <td>${money(c.outstanding_balance)}</td>
+                <td><span class="badge stage-${cls(c.current_stage)}">${esc(c.current_stage)}</span></td>
+                <td><span class="status-pill status-${cls(c.status)}">${esc(c.status)}</span></td>
+                <td>${c.next_action ? esc(c.next_action) + (c.next_action_date ? " · " + fdate(c.next_action_date) : "") : "—"}</td>
+                <td>${esc(c.assigned_officer || "—")}</td>
+              </tr>
+            `).join("")
+          }
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById("newCaseBtn").onclick = openNewCaseModal;
+  document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; renderDashboard(); };
+  document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; renderDashboard(); };
+  document.getElementById("statusFilter").onchange = (e) => { state.filters.status = e.target.value; renderDashboard(); };
+  document.querySelectorAll("#caseRows tr[data-id]").forEach(tr => {
+    tr.onclick = () => openCaseDrawer(tr.dataset.id);
+  });
+}
+
+// ---------- new case modal ----------
+function openNewCaseModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div>
+          <h3>Refer account to legal</h3>
+          <div class="acct-line">New case file</div>
+        </div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field full"><label>Account number *</label><input id="f_account" /></div>
+          <div class="field full"><label>Customer name *</label><input id="f_customer" /></div>
+          <div class="field"><label>Product type</label><input id="f_product" placeholder="e.g. FlexiPay" /></div>
+          <div class="field"><label>Branch</label><input id="f_branch" /></div>
+          <div class="field"><label>Loan amount (UGX)</label><input type="number" id="f_loanamt" /></div>
+          <div class="field"><label>Outstanding balance (UGX)</label><input type="number" id="f_outstanding" /></div>
+          <div class="field"><label>Assigned officer</label><input id="f_officer" /></div>
+          <div class="field"><label>Date referred to legal</label><input type="date" id="f_dateref" value="${new Date().toISOString().slice(0,10)}" /></div>
+          <div class="section-label full">Legal representation</div>
+          <div class="field"><label>Law firm</label><input id="f_lawfirm" /></div>
+          <div class="field"><label>Lawyer name</label><input id="f_lawyer" /></div>
+          <div class="field"><label>Court name</label><input id="f_court" /></div>
+          <div class="field"><label>Court case number</label><input id="f_casenum" /></div>
+          <div class="field full"><label>Notes</label><textarea id="f_notes"></textarea></div>
+        </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="saveCase">Create case</button>
+          <button class="btn btn-ghost" id="cancelCase">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelCase").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#saveCase").onclick = async () => {
+    const account_number = document.getElementById("f_account").value.trim();
+    const customer_name = document.getElementById("f_customer").value.trim();
+    if (!account_number || !customer_name) { toast("Account number and customer name are required.", true); return; }
+
+    const payload = {
+      account_number,
+      customer_name,
+      product_type: document.getElementById("f_product").value.trim() || null,
+      branch: document.getElementById("f_branch").value.trim() || null,
+      loan_amount: parseFloat(document.getElementById("f_loanamt").value) || null,
+      outstanding_balance: parseFloat(document.getElementById("f_outstanding").value) || null,
+      assigned_officer: document.getElementById("f_officer").value.trim() || null,
+      date_referred_to_legal: document.getElementById("f_dateref").value || new Date().toISOString().slice(0,10),
+      law_firm: document.getElementById("f_lawfirm").value.trim() || null,
+      lawyer_name: document.getElementById("f_lawyer").value.trim() || null,
+      court_name: document.getElementById("f_court").value.trim() || null,
+      court_case_number: document.getElementById("f_casenum").value.trim() || null,
+      notes: document.getElementById("f_notes").value.trim() || null,
+      current_stage: "Demand Letter",
+      status: "Active",
+      created_by: state.user.id,
+    };
+
+    const { error } = await sb.from("legal_cases").insert(payload);
+    if (error) { toast("Could not save case: " + error.message, true); return; }
+    overlay.remove();
+    toast("Case created.");
+    await loadCases();
+    renderDashboard();
+  };
+}
+
+// ---------- case drawer ----------
+async function openCaseDrawer(caseId) {
+  const c = state.cases.find(x => x.id === caseId);
+  if (!c) return;
+  const history = await loadHistory(caseId);
+
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="drawer">
+      <div class="drawer-head">
+        <div>
+          <h3>${esc(c.customer_name)}</h3>
+          <div class="acct-line">${esc(c.account_number)}${c.court_case_number ? " · Case " + esc(c.court_case_number) : ""}</div>
+        </div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div class="case-summary">
+          <div class="row"><span class="k">Current stage</span><span class="v"><span class="badge stage-${cls(c.current_stage)}">${esc(c.current_stage)}</span></span></div>
+          <div class="row"><span class="k">Status</span><span class="v">${esc(c.status)}</span></div>
+          <div class="row"><span class="k">Outstanding balance</span><span class="v">${money(c.outstanding_balance)}</span></div>
+          <div class="row"><span class="k">Loan amount</span><span class="v">${money(c.loan_amount)}</span></div>
+          <div class="row"><span class="k">Product / Branch</span><span class="v">${esc(c.product_type || "—")} ${c.branch ? "· " + esc(c.branch) : ""}</span></div>
+          <div class="row"><span class="k">Assigned officer</span><span class="v">${esc(c.assigned_officer || "—")}</span></div>
+          <div class="row"><span class="k">Law firm / Lawyer</span><span class="v">${esc(c.law_firm || "—")} ${c.lawyer_name ? "· " + esc(c.lawyer_name) : ""}</span></div>
+          <div class="row"><span class="k">Court</span><span class="v">${esc(c.court_name || "—")}</span></div>
+          <div class="row"><span class="k">Referred to legal</span><span class="v">${fdate(c.date_referred_to_legal)}</span></div>
+          ${c.notes ? `<div class="row"><span class="k">Notes</span><span class="v">${esc(c.notes)}</span></div>` : ""}
+        </div>
+
+        <div class="actions-row">
+          <button class="btn btn-gold" id="logStepBtn">Log next step</button>
+          <button class="btn btn-ghost" id="editCaseBtn">Edit case details</button>
+        </div>
+
+        <div class="section-label">Case timeline</div>
+        <div class="timeline" id="timelineWrap">
+          ${history.length === 0 ? `<p style="color:var(--muted); font-size:13px;">No steps logged yet.</p>` :
+            history.map((h, i) => `
+              <div class="tl-item ${i === history.length - 1 ? "is-latest" : ""}">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-stage">${esc(h.stage)}</span>
+                  <span class="tl-date">${fdate(h.date_entered)}</span>
+                </div>
+                ${h.outcome ? `<div class="tl-outcome">${esc(h.outcome)}</div>` : ""}
+                ${h.next_action ? `<div class="tl-next">Next: ${esc(h.next_action)}${h.next_action_date ? " — " + fdate(h.next_action_date) : ""}</div>` : ""}
+                ${h.remarks ? `<div class="tl-remarks">${esc(h.remarks)}</div>` : ""}
+              </div>
+            `).join("")
+          }
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#logStepBtn").onclick = () => openLogStepModal(c, overlay);
+  overlay.querySelector("#editCaseBtn").onclick = () => openEditCaseModal(c, overlay);
+}
+
+// ---------- log step modal ----------
+function openLogStepModal(c, parentOverlay) {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div><h3>Log next step</h3><div class="acct-line">${esc(c.account_number)} · ${esc(c.customer_name)}</div></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Stage *</label>
+          <select id="s_stage">
+            ${STAGES.map(s => `<option value="${s}" ${s === c.current_stage ? "selected" : ""}>${esc(s)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field"><label>Date *</label><input type="date" id="s_date" value="${new Date().toISOString().slice(0,10)}" /></div>
+        <div class="field"><label>Outcome</label><input id="s_outcome" placeholder="e.g. Adjourned to next mention" /></div>
+        <div class="field"><label>Next action</label><input id="s_nextaction" placeholder="e.g. Attend hearing" /></div>
+        <div class="field"><label>Next action date</label><input type="date" id="s_nextdate" /></div>
+        <div class="field"><label>Remarks</label><textarea id="s_remarks"></textarea></div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="saveStep">Save step</button>
+          <button class="btn btn-ghost" id="cancelStep">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelStep").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#saveStep").onclick = async () => {
+    const payload = {
+      case_id: c.id,
+      stage: document.getElementById("s_stage").value,
+      date_entered: document.getElementById("s_date").value,
+      outcome: document.getElementById("s_outcome").value.trim() || null,
+      next_action: document.getElementById("s_nextaction").value.trim() || null,
+      next_action_date: document.getElementById("s_nextdate").value || null,
+      remarks: document.getElementById("s_remarks").value.trim() || null,
+      logged_by: state.user.id,
+    };
+    const { error } = await sb.from("case_stage_history").insert(payload);
+    if (error) { toast("Could not log step: " + error.message, true); return; }
+
+    // if stage was set to Closed, also reflect on status
+    if (payload.stage === "Closed") {
+      await sb.from("legal_cases").update({ status: "Closed" }).eq("id", c.id);
+    }
+
+    overlay.remove();
+    if (parentOverlay) parentOverlay.remove();
+    toast("Step logged.");
+    await loadCases();
+    renderDashboard();
+  };
+}
+
+// ---------- edit case modal ----------
+function openEditCaseModal(c, parentOverlay) {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div><h3>Edit case details</h3><div class="acct-line">${esc(c.account_number)}</div></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field full"><label>Customer name</label><input id="e_customer" value="${esc(c.customer_name)}" /></div>
+          <div class="field"><label>Product type</label><input id="e_product" value="${esc(c.product_type || "")}" /></div>
+          <div class="field"><label>Branch</label><input id="e_branch" value="${esc(c.branch || "")}" /></div>
+          <div class="field"><label>Loan amount</label><input type="number" id="e_loanamt" value="${c.loan_amount ?? ""}" /></div>
+          <div class="field"><label>Outstanding balance</label><input type="number" id="e_outstanding" value="${c.outstanding_balance ?? ""}" /></div>
+          <div class="field"><label>Assigned officer</label><input id="e_officer" value="${esc(c.assigned_officer || "")}" /></div>
+          <div class="field"><label>Status</label>
+            <select id="e_status">${STATUSES.map(s => `<option value="${s}" ${s === c.status ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Law firm</label><input id="e_lawfirm" value="${esc(c.law_firm || "")}" /></div>
+          <div class="field"><label>Lawyer name</label><input id="e_lawyer" value="${esc(c.lawyer_name || "")}" /></div>
+          <div class="field"><label>Court name</label><input id="e_court" value="${esc(c.court_name || "")}" /></div>
+          <div class="field"><label>Court case number</label><input id="e_casenum" value="${esc(c.court_case_number || "")}" /></div>
+          <div class="field full"><label>Notes</label><textarea id="e_notes">${esc(c.notes || "")}</textarea></div>
+        </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="saveEdit">Save changes</button>
+          <button class="btn btn-ghost" id="cancelEdit">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelEdit").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#saveEdit").onclick = async () => {
+    const payload = {
+      customer_name: document.getElementById("e_customer").value.trim(),
+      product_type: document.getElementById("e_product").value.trim() || null,
+      branch: document.getElementById("e_branch").value.trim() || null,
+      loan_amount: parseFloat(document.getElementById("e_loanamt").value) || null,
+      outstanding_balance: parseFloat(document.getElementById("e_outstanding").value) || null,
+      assigned_officer: document.getElementById("e_officer").value.trim() || null,
+      status: document.getElementById("e_status").value,
+      law_firm: document.getElementById("e_lawfirm").value.trim() || null,
+      lawyer_name: document.getElementById("e_lawyer").value.trim() || null,
+      court_name: document.getElementById("e_court").value.trim() || null,
+      court_case_number: document.getElementById("e_casenum").value.trim() || null,
+      notes: document.getElementById("e_notes").value.trim() || null,
+    };
+    const { error } = await sb.from("legal_cases").update(payload).eq("id", c.id);
+    if (error) { toast("Could not save changes: " + error.message, true); return; }
+    overlay.remove();
+    if (parentOverlay) parentOverlay.remove();
+    toast("Case updated.");
+    await loadCases();
+    renderDashboard();
+  };
+}
+
+init();
+
+</script>
+</body>
+</html>
