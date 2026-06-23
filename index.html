@@ -324,18 +324,18 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
 
-.stage-Demand-Letter { background: #eef2f7; color: var(--navy-mid); }
-.stage-Demand-Letter::before { background: var(--navy-mid); }
-.stage-Filing { background: #f3e9d6; color: var(--amber); }
-.stage-Filing::before { background: var(--amber); }
-.stage-Hearing { background: #fdeedb; color: #b15c1f; }
-.stage-Hearing::before { background: #b15c1f; }
-.stage-Judgment { background: #e6e9f5; color: #3f4a8f; }
-.stage-Judgment::before { background: #3f4a8f; }
+.stage-Pre-Trial { background: #eef2f7; color: var(--navy-mid); }
+.stage-Pre-Trial::before { background: var(--navy-mid); }
+.stage-Trial { background: #f3e9d6; color: var(--amber); }
+.stage-Trial::before { background: var(--amber); }
+.stage-Post-Trial { background: #fdeedb; color: #b15c1f; }
+.stage-Post-Trial::before { background: #b15c1f; }
+.stage-Judged { background: #e6e9f5; color: #3f4a8f; }
+.stage-Judged::before { background: #3f4a8f; }
 .stage-Execution { background: #f3e3c0; color: var(--gold); }
 .stage-Execution::before { background: var(--gold); }
-.stage-Closed { background: #e3efe7; color: var(--green); }
-.stage-Closed::before { background: var(--green); }
+.stage-Archived { background: #e3efe7; color: var(--green); }
+.stage-Archived::before { background: var(--green); }
 
 .status-pill {
   font-size: 11px;
@@ -535,13 +535,33 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'legal' },
 });
 
-const STAGES = ["Demand Letter", "Filing", "Hearing", "Judgment", "Execution", "Closed"];
-const STATUSES = ["Active", "On Hold", "Closed", "Written Off"];
+const STAGES = ["Pre-Trial", "Trial", "Post-Trial", "Judged", "Execution", "Archived"];
+const LAW_FIRMS = [
+  "Cristal Advocates",
+  "ARCADIA  ADVOCATES",
+  "S and L Advocates",
+  "Kalikumutima and Co Advocates",
+  "Ligomarc Advocates",
+  "Nambogo and Co. Advocates",
+  "Nangwala Rezida and Co Advocates",
+  "ORIMA AND CO. ADVOCATES",
+  "H and G Advocates",
+  "MMAKS ADVOCATES",
+  "AF MPANGA ADVOCATES",
+  "Kyagaba and Otatiina (Dentons)",
+  "K and K Advocates",
+  "KNT Advocates",
+];
+const MATTER_TYPES = ["CIVIL", "CRIMINAL", "COMMERCIAL"];
+const COST_CENTERS = ["BUSINESS BANKING", "PERSONAL & BUSINESS BANKING", "CORPORATE & INVESTMENT BANKING"];
+const FORUMS = ["Chief Magistrate", "High Court", "Court of Appeal", "Supreme Court", "Tribunal"];
+const CASE_CATEGORIES = ["BANK IS SUING", "BANK IS BEING SUED"];
+const CASE_CURRENT_STATES = ["CASE STILL OPEN", "CASE CLOSED"];
 
 let state = {
   user: null,
   cases: [],
-  filters: { search: "", stage: "", status: "Active" },
+  filters: { search: "", stage: "", state: "CASE STILL OPEN" },
 };
 
 const root = document.getElementById("app");
@@ -576,7 +596,24 @@ async function sha256Hex(str) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ============================================================
+// DEBUG MODE — login temporarily bypassed
+// ------------------------------------------------------------
+// Set DEBUG_SKIP_LOGIN to false to restore normal login behavior.
+// While true, init() skips straight to the dashboard using a fake
+// local user object, so we can check the layout and Supabase
+// connectivity (loadCases) independently of the login flow.
+// ============================================================
+const DEBUG_SKIP_LOGIN = true;
+
 async function init() {
+  if (DEBUG_SKIP_LOGIN) {
+    state.user = { id: null, username: "debug", full_name: "Edgar (Debug Mode)", role: "admin" };
+    await loadCases();
+    renderApp();
+    return;
+  }
+
   const saved = localStorage.getItem("legal_tracker_session");
   if (saved) {
     try {
@@ -695,11 +732,12 @@ function renderApp() {
 function visibleCases() {
   const f = state.filters;
   return state.cases.filter((c) => {
-    if (f.stage && c.current_stage !== f.stage) return false;
-    if (f.status && c.status !== f.status) return false;
+    if (f.stage && c.case_stage !== f.stage) return false;
+    if (f.state && c.case_current_state !== f.state) return false;
     if (f.search) {
       const s = f.search.toLowerCase();
-      if (!(`${c.account_number} ${c.customer_name} ${c.court_case_number || ""}`.toLowerCase().includes(s))) return false;
+      const hay = `${c.citation} ${c.law_firm || ""} ${c.cause_of_action || ""} ${c.in_charge_counsel || ""} ${c.assigned_counsel || ""}`.toLowerCase();
+      if (!hay.includes(s)) return false;
     }
     return true;
   });
@@ -708,8 +746,10 @@ function visibleCases() {
 function renderDashboard() {
   const main = document.getElementById("main");
   const all = state.cases;
-  const counts = STAGES.reduce((acc, s) => { acc[s] = all.filter(c => c.current_stage === s).length; return acc; }, {});
-  const totalOutstanding = all.filter(c => c.status === "Active").reduce((sum, c) => sum + (Number(c.outstanding_balance) || 0), 0);
+  const counts = STAGES.reduce((acc, s) => { acc[s] = all.filter(c => c.case_stage === s).length; return acc; }, {});
+  const openCases = all.filter(c => c.case_current_state !== "CASE CLOSED");
+  const totalQuantum = openCases.reduce((sum, c) => sum + (Number(c.quantum) || 0), 0);
+  const totalFees = openCases.reduce((sum, c) => sum + (Number(c.estimated_legal_fees) || 0), 0);
 
   const rows = visibleCases();
 
@@ -717,9 +757,9 @@ function renderDashboard() {
     <div class="page-head">
       <div>
         <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
-        <h2>Accounts Under Legal</h2>
+        <h2>Legal Cases</h2>
       </div>
-      <button class="btn btn-gold" id="newCaseBtn">+ Refer account to legal</button>
+      <button class="btn btn-gold" id="newCaseBtn">+ Add case</button>
     </div>
 
     <div class="stat-row">
@@ -728,10 +768,14 @@ function renderDashboard() {
         <div class="l">Total cases</div>
       </div>
       <div class="stat-card accent">
-        <div class="n">${money(totalOutstanding)}</div>
-        <div class="l">Outstanding (active)</div>
+        <div class="n">${money(totalQuantum)}</div>
+        <div class="l">Quantum (open cases)</div>
       </div>
-      ${STAGES.filter(s => s !== "Closed").map(s => `
+      <div class="stat-card accent">
+        <div class="n">${money(totalFees)}</div>
+        <div class="l">Est. legal fees (open)</div>
+      </div>
+      ${STAGES.filter(s => s !== "Archived").map(s => `
         <div class="stat-card">
           <div class="n">${counts[s] || 0}</div>
           <div class="l">${esc(s)}</div>
@@ -740,14 +784,14 @@ function renderDashboard() {
     </div>
 
     <div class="toolbar">
-      <input type="search" id="searchBox" placeholder="Search account, customer or case no." value="${esc(state.filters.search)}" />
+      <input type="search" id="searchBox" placeholder="Search citation, law firm, cause of action..." value="${esc(state.filters.search)}" />
       <select id="stageFilter">
         <option value="">All stages</option>
         ${STAGES.map(s => `<option value="${s}" ${state.filters.stage === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
       </select>
-      <select id="statusFilter">
-        <option value="">All statuses</option>
-        ${STATUSES.map(s => `<option value="${s}" ${state.filters.status === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      <select id="stateFilter">
+        <option value="">All states</option>
+        ${CASE_CURRENT_STATES.map(s => `<option value="${s}" ${state.filters.state === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
       </select>
       <div class="spacer"></div>
       <span style="font-size:12px;color:var(--muted)">${rows.length} of ${all.length} shown</span>
@@ -757,26 +801,26 @@ function renderDashboard() {
       <table>
         <thead>
           <tr>
-            <th>Account No.</th>
-            <th>Customer</th>
-            <th>Outstanding</th>
+            <th>Citation</th>
+            <th>Law Firm</th>
+            <th>Quantum</th>
             <th>Stage</th>
-            <th>Status</th>
-            <th>Next action</th>
-            <th>Officer</th>
+            <th>Case State</th>
+            <th>Counsel</th>
+            <th>Filing Date</th>
           </tr>
         </thead>
         <tbody id="caseRows">
           ${rows.length === 0 ? `<tr class="empty-row"><td colspan="7">No cases match these filters.</td></tr>` :
             rows.map(c => `
               <tr data-id="${c.id}">
-                <td class="acct">${esc(c.account_number)}</td>
-                <td>${esc(c.customer_name)}</td>
-                <td>${money(c.outstanding_balance)}</td>
-                <td><span class="badge stage-${cls(c.current_stage)}">${esc(c.current_stage)}</span></td>
-                <td><span class="status-pill status-${cls(c.status)}">${esc(c.status)}</span></td>
-                <td>${c.next_action ? esc(c.next_action) + (c.next_action_date ? " · " + fdate(c.next_action_date) : "") : "—"}</td>
-                <td>${esc(c.assigned_officer || "—")}</td>
+                <td class="acct">${esc(c.citation)}</td>
+                <td>${esc(c.law_firm || "—")}</td>
+                <td>${money(c.quantum)}</td>
+                <td><span class="badge stage-${cls(c.case_stage)}">${esc(c.case_stage)}</span></td>
+                <td>${esc(c.case_current_state || "—")}</td>
+                <td>${esc(c.in_charge_counsel || c.assigned_counsel || "—")}</td>
+                <td>${fdate(c.filing_date)}</td>
               </tr>
             `).join("")
           }
@@ -788,7 +832,7 @@ function renderDashboard() {
   document.getElementById("newCaseBtn").onclick = openNewCaseModal;
   document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; renderDashboard(); };
   document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; renderDashboard(); };
-  document.getElementById("statusFilter").onchange = (e) => { state.filters.status = e.target.value; renderDashboard(); };
+  document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; renderDashboard(); };
   document.querySelectorAll("#caseRows tr[data-id]").forEach(tr => {
     tr.onclick = () => openCaseDrawer(tr.dataset.id);
   });
@@ -802,28 +846,44 @@ function openNewCaseModal() {
     <div class="modal-box">
       <div class="modal-head">
         <div>
-          <h3>Refer account to legal</h3>
+          <h3>Add case</h3>
           <div class="acct-line">New case file</div>
         </div>
         <button class="close-x">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-grid">
-          <div class="field full"><label>Account number *</label><input id="f_account" /></div>
-          <div class="field full"><label>Customer name *</label><input id="f_customer" /></div>
-          <div class="field"><label>Product type</label><input id="f_product" placeholder="e.g. FlexiPay" /></div>
-          <div class="field"><label>Branch</label><input id="f_branch" /></div>
-          <div class="field"><label>Loan amount (UGX)</label><input type="number" id="f_loanamt" /></div>
-          <div class="field"><label>Outstanding balance (UGX)</label><input type="number" id="f_outstanding" /></div>
-          <div class="field"><label>Assigned officer</label><input id="f_officer" /></div>
-          <div class="field"><label>Date referred to legal</label><input type="date" id="f_dateref" value="${new Date().toISOString().slice(0,10)}" /></div>
-          <div class="section-label full">Legal representation</div>
-          <div class="field"><label>Law firm</label><input id="f_lawfirm" /></div>
-          <div class="field"><label>Lawyer name</label><input id="f_lawyer" /></div>
-          <div class="field"><label>Court name</label><input id="f_court" /></div>
-          <div class="field"><label>Court case number</label><input id="f_casenum" /></div>
-          <div class="field full"><label>Notes</label><textarea id="f_notes"></textarea></div>
+          <div class="field full"><label>Citation *</label><input id="f_citation" placeholder="e.g. STANBIC BANK (U) LTD VERSUS OPOLOT MOSES  CIVIL SUIT NO. 345 OF 2019" /></div>
+          <div class="field"><label>Cause of action</label><input id="f_cause" /></div>
+          <div class="field"><label>Filing date</label><input type="date" id="f_filingdate" /></div>
+          <div class="field"><label>Evaluation score</label><input type="number" step="0.1" id="f_evalscore" /></div>
+          <div class="field"><label>Quantum (UGX)</label><input type="number" id="f_quantum" /></div>
+          <div class="field"><label>Legal provision (UGX)</label><input type="number" id="f_provision" /></div>
+          <div class="field"><label>Estimated legal fees (UGX)</label><input type="number" id="f_fees" /></div>
+          <div class="field"><label>Damages (UGX)</label><input type="number" id="f_damages" /></div>
+          <div class="section-label full">Case status</div>
+          <div class="field"><label>Case stage</label>
+            <select id="f_stage">${STAGES.map(s => `<option value="${s}">${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Case current state</label><input id="f_currentstate" list="currentStateList" value="CASE STILL OPEN" /></div>
+          <div class="field"><label>Case category</label><input id="f_category" list="categoryList" /></div>
+          <div class="field"><label>Matter type</label><input id="f_mattertype" list="matterTypeList" /></div>
+          <div class="section-label full">Representation &amp; forum</div>
+          <div class="field"><label>Law firm</label>
+            <select id="f_lawfirm"><option value="">— Select —</option>${LAW_FIRMS.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Forum</label><input id="f_forum" list="forumList" /></div>
+          <div class="field"><label>In-charge counsel</label><input id="f_incharge" /></div>
+          <div class="field"><label>Assigned counsel</label><input id="f_assigned" /></div>
+          <div class="field"><label>Cost center</label><input id="f_costcenter" list="costCenterList" /></div>
+          <div class="field"><label>When created</label><input type="date" id="f_whencreated" value="${new Date().toISOString().slice(0,10)}" /></div>
+          <div class="field full"><label>Comments</label><textarea id="f_comments"></textarea></div>
         </div>
+        <datalist id="currentStateList">${CASE_CURRENT_STATES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="categoryList">${CASE_CATEGORIES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="matterTypeList">${MATTER_TYPES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="forumList">${FORUMS.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="costCenterList">${COST_CENTERS.map(s => `<option value="${s}">`).join("")}</datalist>
         <div class="actions-row">
           <button class="btn btn-primary" id="saveCase">Create case</button>
           <button class="btn btn-ghost" id="cancelCase">Cancel</button>
@@ -837,26 +897,29 @@ function openNewCaseModal() {
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
   overlay.querySelector("#saveCase").onclick = async () => {
-    const account_number = document.getElementById("f_account").value.trim();
-    const customer_name = document.getElementById("f_customer").value.trim();
-    if (!account_number || !customer_name) { toast("Account number and customer name are required.", true); return; }
+    const citation = document.getElementById("f_citation").value.trim();
+    if (!citation) { toast("Citation is required.", true); return; }
 
     const payload = {
-      account_number,
-      customer_name,
-      product_type: document.getElementById("f_product").value.trim() || null,
-      branch: document.getElementById("f_branch").value.trim() || null,
-      loan_amount: parseFloat(document.getElementById("f_loanamt").value) || null,
-      outstanding_balance: parseFloat(document.getElementById("f_outstanding").value) || null,
-      assigned_officer: document.getElementById("f_officer").value.trim() || null,
-      date_referred_to_legal: document.getElementById("f_dateref").value || new Date().toISOString().slice(0,10),
+      citation,
+      cause_of_action: document.getElementById("f_cause").value.trim() || null,
+      filing_date: document.getElementById("f_filingdate").value || null,
+      evaluation_score: parseFloat(document.getElementById("f_evalscore").value) || null,
+      quantum: parseFloat(document.getElementById("f_quantum").value) || null,
+      legal_provision: parseFloat(document.getElementById("f_provision").value) || null,
+      estimated_legal_fees: parseFloat(document.getElementById("f_fees").value) || null,
+      damages: parseFloat(document.getElementById("f_damages").value) || null,
+      case_stage: document.getElementById("f_stage").value,
+      case_current_state: document.getElementById("f_currentstate").value.trim() || null,
+      case_category: document.getElementById("f_category").value.trim() || null,
+      matter_type: document.getElementById("f_mattertype").value.trim() || null,
       law_firm: document.getElementById("f_lawfirm").value.trim() || null,
-      lawyer_name: document.getElementById("f_lawyer").value.trim() || null,
-      court_name: document.getElementById("f_court").value.trim() || null,
-      court_case_number: document.getElementById("f_casenum").value.trim() || null,
-      notes: document.getElementById("f_notes").value.trim() || null,
-      current_stage: "Demand Letter",
-      status: "Active",
+      forum: document.getElementById("f_forum").value.trim() || null,
+      in_charge_counsel: document.getElementById("f_incharge").value.trim() || null,
+      assigned_counsel: document.getElementById("f_assigned").value.trim() || null,
+      cost_center: document.getElementById("f_costcenter").value.trim() || null,
+      when_created: document.getElementById("f_whencreated").value || new Date().toISOString().slice(0,10),
+      comments: document.getElementById("f_comments").value.trim() || null,
       created_by: state.user.id,
     };
 
@@ -881,23 +944,30 @@ async function openCaseDrawer(caseId) {
     <div class="drawer">
       <div class="drawer-head">
         <div>
-          <h3>${esc(c.customer_name)}</h3>
-          <div class="acct-line">${esc(c.account_number)}${c.court_case_number ? " · Case " + esc(c.court_case_number) : ""}</div>
+          <h3>${esc(c.citation)}</h3>
+          <div class="acct-line">${esc(c.cause_of_action || "—")}${c.law_firm ? " · " + esc(c.law_firm) : ""}</div>
         </div>
         <button class="close-x">&times;</button>
       </div>
       <div class="drawer-body">
         <div class="case-summary">
-          <div class="row"><span class="k">Current stage</span><span class="v"><span class="badge stage-${cls(c.current_stage)}">${esc(c.current_stage)}</span></span></div>
-          <div class="row"><span class="k">Status</span><span class="v">${esc(c.status)}</span></div>
-          <div class="row"><span class="k">Outstanding balance</span><span class="v">${money(c.outstanding_balance)}</span></div>
-          <div class="row"><span class="k">Loan amount</span><span class="v">${money(c.loan_amount)}</span></div>
-          <div class="row"><span class="k">Product / Branch</span><span class="v">${esc(c.product_type || "—")} ${c.branch ? "· " + esc(c.branch) : ""}</span></div>
-          <div class="row"><span class="k">Assigned officer</span><span class="v">${esc(c.assigned_officer || "—")}</span></div>
-          <div class="row"><span class="k">Law firm / Lawyer</span><span class="v">${esc(c.law_firm || "—")} ${c.lawyer_name ? "· " + esc(c.lawyer_name) : ""}</span></div>
-          <div class="row"><span class="k">Court</span><span class="v">${esc(c.court_name || "—")}</span></div>
-          <div class="row"><span class="k">Referred to legal</span><span class="v">${fdate(c.date_referred_to_legal)}</span></div>
-          ${c.notes ? `<div class="row"><span class="k">Notes</span><span class="v">${esc(c.notes)}</span></div>` : ""}
+          <div class="row"><span class="k">Case stage</span><span class="v"><span class="badge stage-${cls(c.case_stage)}">${esc(c.case_stage)}</span></span></div>
+          <div class="row"><span class="k">Case current state</span><span class="v">${esc(c.case_current_state || "—")}</span></div>
+          <div class="row"><span class="k">Case category</span><span class="v">${esc(c.case_category || "—")}</span></div>
+          <div class="row"><span class="k">Matter type</span><span class="v">${esc(c.matter_type || "—")}</span></div>
+          <div class="row"><span class="k">Evaluation score</span><span class="v">${c.evaluation_score ?? "—"}</span></div>
+          <div class="row"><span class="k">Quantum</span><span class="v">${money(c.quantum)}</span></div>
+          <div class="row"><span class="k">Legal provision</span><span class="v">${money(c.legal_provision)}</span></div>
+          <div class="row"><span class="k">Estimated legal fees</span><span class="v">${money(c.estimated_legal_fees)}</span></div>
+          <div class="row"><span class="k">Damages</span><span class="v">${money(c.damages)}</span></div>
+          <div class="row"><span class="k">Filing date</span><span class="v">${fdate(c.filing_date)}</span></div>
+          <div class="row"><span class="k">Law firm</span><span class="v">${esc(c.law_firm || "—")}</span></div>
+          <div class="row"><span class="k">Forum</span><span class="v">${esc(c.forum || "—")}</span></div>
+          <div class="row"><span class="k">In-charge counsel</span><span class="v">${esc(c.in_charge_counsel || "—")}</span></div>
+          <div class="row"><span class="k">Assigned counsel</span><span class="v">${esc(c.assigned_counsel || "—")}</span></div>
+          <div class="row"><span class="k">Cost center</span><span class="v">${esc(c.cost_center || "—")}</span></div>
+          <div class="row"><span class="k">When created</span><span class="v">${fdate(c.when_created)}</span></div>
+          ${c.comments ? `<div class="row"><span class="k">Comments</span><span class="v">${esc(c.comments)}</span></div>` : ""}
         </div>
 
         <div class="actions-row">
@@ -939,14 +1009,14 @@ function openLogStepModal(c, parentOverlay) {
   overlay.innerHTML = `
     <div class="modal-box">
       <div class="modal-head">
-        <div><h3>Log next step</h3><div class="acct-line">${esc(c.account_number)} · ${esc(c.customer_name)}</div></div>
+        <div><h3>Log next step</h3><div class="acct-line">${esc(c.citation)}</div></div>
         <button class="close-x">&times;</button>
       </div>
       <div class="modal-body">
         <div class="field">
           <label>Stage *</label>
           <select id="s_stage">
-            ${STAGES.map(s => `<option value="${s}" ${s === c.current_stage ? "selected" : ""}>${esc(s)}</option>`).join("")}
+            ${STAGES.map(s => `<option value="${s}" ${s === c.case_stage ? "selected" : ""}>${esc(s)}</option>`).join("")}
           </select>
         </div>
         <div class="field"><label>Date *</label><input type="date" id="s_date" value="${new Date().toISOString().slice(0,10)}" /></div>
@@ -980,9 +1050,9 @@ function openLogStepModal(c, parentOverlay) {
     const { error } = await sb.from("case_stage_history").insert(payload);
     if (error) { toast("Could not log step: " + error.message, true); return; }
 
-    // if stage was set to Closed, also reflect on status
-    if (payload.stage === "Closed") {
-      await sb.from("legal_cases").update({ status: "Closed" }).eq("id", c.id);
+    // if stage was set to Archived, also reflect on case_current_state
+    if (payload.stage === "Archived") {
+      await sb.from("legal_cases").update({ case_current_state: "CASE CLOSED" }).eq("id", c.id);
     }
 
     overlay.remove();
@@ -1000,26 +1070,40 @@ function openEditCaseModal(c, parentOverlay) {
   overlay.innerHTML = `
     <div class="modal-box">
       <div class="modal-head">
-        <div><h3>Edit case details</h3><div class="acct-line">${esc(c.account_number)}</div></div>
+        <div><h3>Edit case details</h3><div class="acct-line">${esc(c.citation)}</div></div>
         <button class="close-x">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-grid">
-          <div class="field full"><label>Customer name</label><input id="e_customer" value="${esc(c.customer_name)}" /></div>
-          <div class="field"><label>Product type</label><input id="e_product" value="${esc(c.product_type || "")}" /></div>
-          <div class="field"><label>Branch</label><input id="e_branch" value="${esc(c.branch || "")}" /></div>
-          <div class="field"><label>Loan amount</label><input type="number" id="e_loanamt" value="${c.loan_amount ?? ""}" /></div>
-          <div class="field"><label>Outstanding balance</label><input type="number" id="e_outstanding" value="${c.outstanding_balance ?? ""}" /></div>
-          <div class="field"><label>Assigned officer</label><input id="e_officer" value="${esc(c.assigned_officer || "")}" /></div>
-          <div class="field"><label>Status</label>
-            <select id="e_status">${STATUSES.map(s => `<option value="${s}" ${s === c.status ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+          <div class="field full"><label>Citation</label><input id="e_citation" value="${esc(c.citation)}" /></div>
+          <div class="field"><label>Cause of action</label><input id="e_cause" value="${esc(c.cause_of_action || "")}" /></div>
+          <div class="field"><label>Filing date</label><input type="date" id="e_filingdate" value="${c.filing_date || ""}" /></div>
+          <div class="field"><label>Evaluation score</label><input type="number" step="0.1" id="e_evalscore" value="${c.evaluation_score ?? ""}" /></div>
+          <div class="field"><label>Quantum (UGX)</label><input type="number" id="e_quantum" value="${c.quantum ?? ""}" /></div>
+          <div class="field"><label>Legal provision (UGX)</label><input type="number" id="e_provision" value="${c.legal_provision ?? ""}" /></div>
+          <div class="field"><label>Estimated legal fees (UGX)</label><input type="number" id="e_fees" value="${c.estimated_legal_fees ?? ""}" /></div>
+          <div class="field"><label>Damages (UGX)</label><input type="number" id="e_damages" value="${c.damages ?? ""}" /></div>
+          <div class="field"><label>Case stage</label>
+            <select id="e_stage">${STAGES.map(s => `<option value="${s}" ${s === c.case_stage ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
           </div>
-          <div class="field"><label>Law firm</label><input id="e_lawfirm" value="${esc(c.law_firm || "")}" /></div>
-          <div class="field"><label>Lawyer name</label><input id="e_lawyer" value="${esc(c.lawyer_name || "")}" /></div>
-          <div class="field"><label>Court name</label><input id="e_court" value="${esc(c.court_name || "")}" /></div>
-          <div class="field"><label>Court case number</label><input id="e_casenum" value="${esc(c.court_case_number || "")}" /></div>
-          <div class="field full"><label>Notes</label><textarea id="e_notes">${esc(c.notes || "")}</textarea></div>
+          <div class="field"><label>Case current state</label><input id="e_currentstate" list="e_currentStateList" value="${esc(c.case_current_state || "")}" /></div>
+          <div class="field"><label>Case category</label><input id="e_category" list="e_categoryList" value="${esc(c.case_category || "")}" /></div>
+          <div class="field"><label>Matter type</label><input id="e_mattertype" list="e_matterTypeList" value="${esc(c.matter_type || "")}" /></div>
+          <div class="field"><label>Law firm</label>
+            <select id="e_lawfirm"><option value="">— Select —</option>${LAW_FIRMS.map(s => `<option value="${esc(s)}" ${s === c.law_firm ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Forum</label><input id="e_forum" list="e_forumList" value="${esc(c.forum || "")}" /></div>
+          <div class="field"><label>In-charge counsel</label><input id="e_incharge" value="${esc(c.in_charge_counsel || "")}" /></div>
+          <div class="field"><label>Assigned counsel</label><input id="e_assigned" value="${esc(c.assigned_counsel || "")}" /></div>
+          <div class="field"><label>Cost center</label><input id="e_costcenter" list="e_costCenterList" value="${esc(c.cost_center || "")}" /></div>
+          <div class="field"><label>When created</label><input type="date" id="e_whencreated" value="${c.when_created || ""}" /></div>
+          <div class="field full"><label>Comments</label><textarea id="e_comments">${esc(c.comments || "")}</textarea></div>
         </div>
+        <datalist id="e_currentStateList">${CASE_CURRENT_STATES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="e_categoryList">${CASE_CATEGORIES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="e_matterTypeList">${MATTER_TYPES.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="e_forumList">${FORUMS.map(s => `<option value="${s}">`).join("")}</datalist>
+        <datalist id="e_costCenterList">${COST_CENTERS.map(s => `<option value="${s}">`).join("")}</datalist>
         <div class="actions-row">
           <button class="btn btn-primary" id="saveEdit">Save changes</button>
           <button class="btn btn-ghost" id="cancelEdit">Cancel</button>
@@ -1034,18 +1118,25 @@ function openEditCaseModal(c, parentOverlay) {
 
   overlay.querySelector("#saveEdit").onclick = async () => {
     const payload = {
-      customer_name: document.getElementById("e_customer").value.trim(),
-      product_type: document.getElementById("e_product").value.trim() || null,
-      branch: document.getElementById("e_branch").value.trim() || null,
-      loan_amount: parseFloat(document.getElementById("e_loanamt").value) || null,
-      outstanding_balance: parseFloat(document.getElementById("e_outstanding").value) || null,
-      assigned_officer: document.getElementById("e_officer").value.trim() || null,
-      status: document.getElementById("e_status").value,
+      citation: document.getElementById("e_citation").value.trim(),
+      cause_of_action: document.getElementById("e_cause").value.trim() || null,
+      filing_date: document.getElementById("e_filingdate").value || null,
+      evaluation_score: parseFloat(document.getElementById("e_evalscore").value) || null,
+      quantum: parseFloat(document.getElementById("e_quantum").value) || null,
+      legal_provision: parseFloat(document.getElementById("e_provision").value) || null,
+      estimated_legal_fees: parseFloat(document.getElementById("e_fees").value) || null,
+      damages: parseFloat(document.getElementById("e_damages").value) || null,
+      case_stage: document.getElementById("e_stage").value,
+      case_current_state: document.getElementById("e_currentstate").value.trim() || null,
+      case_category: document.getElementById("e_category").value.trim() || null,
+      matter_type: document.getElementById("e_mattertype").value.trim() || null,
       law_firm: document.getElementById("e_lawfirm").value.trim() || null,
-      lawyer_name: document.getElementById("e_lawyer").value.trim() || null,
-      court_name: document.getElementById("e_court").value.trim() || null,
-      court_case_number: document.getElementById("e_casenum").value.trim() || null,
-      notes: document.getElementById("e_notes").value.trim() || null,
+      forum: document.getElementById("e_forum").value.trim() || null,
+      in_charge_counsel: document.getElementById("e_incharge").value.trim() || null,
+      assigned_counsel: document.getElementById("e_assigned").value.trim() || null,
+      cost_center: document.getElementById("e_costcenter").value.trim() || null,
+      when_created: document.getElementById("e_whencreated").value || null,
+      comments: document.getElementById("e_comments").value.trim() || null,
     };
     const { error } = await sb.from("legal_cases").update(payload).eq("id", c.id);
     if (error) { toast("Could not save changes: " + error.message, true); return; }
