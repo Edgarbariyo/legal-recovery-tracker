@@ -346,6 +346,34 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 .status-Closed { color: var(--green); }
 .status-Written-Off { color: var(--red); }
 
+.badge-activity {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-activity-new { background: var(--navy-pale); color: var(--muted); }
+.badge-activity-revisited { background: #f3e3c0; color: var(--gold); }
+.activity-date { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+.who-line { font-size: 12px; color: var(--ink); }
+.who-line.who-updated { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+.row-actions { display: flex; gap: 6px; }
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 6px;
+  cursor: pointer;
+  color: var(--navy-mid);
+  display: inline-flex;
+  align-items: center;
+}
+.icon-btn:hover { background: var(--navy-pale); }
+.icon-btn.danger { color: var(--red); }
+.icon-btn.danger:hover { background: #fdecea; }
+
 /* ---------- Modal / drawer ---------- */
 .overlay {
   position: fixed; inset: 0;
@@ -606,6 +634,41 @@ function formatFieldValue(type, value) {
   return esc(value);
 }
 
+function activityBadge(c) {
+  const count = c.engagement_count || 0;
+  const revisited = count >= 2;
+  const label = revisited ? `${count} updates` : (count === 1 ? "Just opened" : "No activity");
+  const badgeClass = revisited ? "badge-activity-revisited" : "badge-activity-new";
+  const dateLine = c.last_engaged_at ? `<div class="activity-date">${fdate(c.last_engaged_at)}</div>` : "";
+  return `<span class="badge-activity ${badgeClass}">${esc(label)}</span>${dateLine}`;
+}
+
+function whoBadge(c) {
+  const entered = c.created_by_name || "—";
+  const updated = c.last_updated_by_name || c.created_by_name || "—";
+  const updatedDate = c.updated_at ? fdate(c.updated_at) : null;
+  if (updated === entered) {
+    return `<div class="who-line">Entered: ${esc(entered)}</div>`;
+  }
+  return `
+    <div class="who-line">Entered: ${esc(entered)}</div>
+    <div class="who-line who-updated">Updated: ${esc(updated)}${updatedDate ? " · " + updatedDate : ""}</div>
+  `;
+}
+
+const EDIT_ICON_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const DELETE_ICON_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+
+async function deleteCase(caseId, citation) {
+  if (!confirm(`Delete this case?\n\n${citation}\n\nThis will also remove its timeline and edit history. This cannot be undone.`)) return false;
+  const { error } = await sb.from("legal_cases").delete().eq("id", caseId);
+  if (error) { toast("Could not delete case: " + error.message, true); return false; }
+  toast("Case deleted.");
+  await loadCases();
+  renderDashboard();
+  return true;
+}
+
 function buildChangeDiff(before, after) {
   const changes = {};
   Object.keys(FIELD_META).forEach((key) => {
@@ -637,6 +700,11 @@ const EXPORT_COLUMNS = [
   { key: "case_current_state",   header: "Case Current State" },
   { key: "when_created",         header: "whenCreated" },
   { key: "comments",             header: "Comments" },
+  { key: "engagement_count",     header: "Engagement Count" },
+  { key: "last_engaged_at",      header: "Last Engaged At" },
+  { key: "created_by_name",      header: "Entered By" },
+  { key: "last_updated_by_name", header: "Last Updated By" },
+  { key: "updated_at",           header: "Updated On" },
 ];
 
 function csvEscape(val) {
@@ -646,10 +714,57 @@ function csvEscape(val) {
   return s;
 }
 
-function exportCasesToCSV(rows) {
+// ---------- combined export: each engagement as its own row, with the
+// case's other details repeated on every row, distinguished by Engagement # ----------
+const ENGAGEMENT_COLUMNS = ["Engagement #", "Engagement Date", "Outcome", "Next Action", "Next Action Date", "Remarks"];
+
+async function exportCasesToCSV(rows) {
   if (!rows || rows.length === 0) { toast("No cases to export with the current filters.", true); return; }
-  const header = EXPORT_COLUMNS.map(c => csvEscape(c.header)).join(",");
-  const lines = rows.map(r => EXPORT_COLUMNS.map(c => csvEscape(r[c.key])).join(","));
+
+  const caseIds = rows.map(r => r.id);
+  const { data: allHistory, error } = await sb
+    .from("case_stage_history")
+    .select("*")
+    .in("case_id", caseIds)
+    .order("case_id", { ascending: true })
+    .order("date_entered", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) { toast("Could not load engagement history: " + error.message, true); return; }
+
+  const historyByCase = {};
+  (allHistory || []).forEach(h => {
+    historyByCase[h.case_id] = historyByCase[h.case_id] || [];
+    historyByCase[h.case_id].push(h);
+  });
+
+  const header = [...EXPORT_COLUMNS.map(c => c.header), ...ENGAGEMENT_COLUMNS].map(csvEscape).join(",");
+
+  const lines = [];
+  rows.forEach(c => {
+    const entries = historyByCase[c.id] || [];
+    if (entries.length === 0) {
+      const caseCells = EXPORT_COLUMNS.map(col => csvEscape(c[col.key]));
+      lines.push([...caseCells, "", "", "", "", "", ""].join(","));
+      return;
+    }
+    entries.forEach((h, i) => {
+      // For each engagement row, Case Stage / Last Updated By / Updated On
+      // reflect THAT engagement (not the case's current overall values),
+      // so each row is internally consistent for that point in time.
+      const rowCaseValues = { ...c, case_stage: h.stage, last_updated_by_name: h.logged_by_name, updated_at: h.date_entered };
+      const caseCells = EXPORT_COLUMNS.map(col => csvEscape(rowCaseValues[col.key]));
+      lines.push([
+        ...caseCells,
+        csvEscape(i + 1),
+        csvEscape(h.date_entered),
+        csvEscape(h.outcome),
+        csvEscape(h.next_action),
+        csvEscape(h.next_action_date),
+        csvEscape(h.remarks),
+      ].join(","));
+    });
+  });
+
   const csv = [header, ...lines].join("\r\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -660,7 +775,7 @@ function exportCasesToCSV(rows) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-  toast(`Exported ${rows.length} case(s) to CSV.`);
+  toast(`Exported ${rows.length} case(s) (${lines.length} rows total) to CSV.`);
 }
 
 function toast(msg, isError) {
@@ -863,10 +978,7 @@ function renderDashboard() {
         <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
         <h2>Legal Cases</h2>
       </div>
-      <div class="actions-row" style="margin:0;">
-        <button class="btn btn-ghost" id="exportCsvBtn">Export CSV</button>
-        ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
-      </div>
+      ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
     </div>
 
     <div class="stat-row">
@@ -902,6 +1014,7 @@ function renderDashboard() {
       </select>
       <div class="spacer"></div>
       <span style="font-size:12px;color:var(--muted)">${rows.length} of ${all.length} shown</span>
+      <button class="btn btn-ghost" id="exportCsvBtn" style="padding:6px 12px;font-size:12.5px;">Export CSV</button>
     </div>
 
     <div class="table-wrap">
@@ -915,10 +1028,13 @@ function renderDashboard() {
             <th>Case State</th>
             <th>Counsel</th>
             <th>Filing Date</th>
+            <th>Activity</th>
+            <th>Entered / Updated By</th>
+            ${canEdit() ? `<th></th>` : ""}
           </tr>
         </thead>
         <tbody id="caseRows">
-          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="7">No cases match these filters.</td></tr>` :
+          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="${canEdit() ? 10 : 9}">No cases match these filters.</td></tr>` :
             rows.map(c => `
               <tr data-id="${c.id}">
                 <td class="acct">${esc(c.citation)}</td>
@@ -928,6 +1044,16 @@ function renderDashboard() {
                 <td>${esc(c.case_current_state || "—")}</td>
                 <td>${esc(c.in_charge_counsel || c.assigned_counsel || "—")}</td>
                 <td>${fdate(c.filing_date)}</td>
+                <td>${activityBadge(c)}</td>
+                <td>${whoBadge(c)}</td>
+                ${canEdit() ? `
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn rowEditBtn" data-id="${c.id}" title="Edit case">${EDIT_ICON_SVG}</button>
+                    <button class="icon-btn danger rowDeleteBtn" data-id="${c.id}" data-citation="${esc(c.citation)}" title="Delete case">${DELETE_ICON_SVG}</button>
+                  </div>
+                </td>
+                ` : ""}
               </tr>
             `).join("")
           }
@@ -943,6 +1069,19 @@ function renderDashboard() {
   document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; renderDashboard(); };
   document.querySelectorAll("#caseRows tr[data-id]").forEach(tr => {
     tr.onclick = () => openCaseDrawer(tr.dataset.id);
+  });
+  document.querySelectorAll(".rowEditBtn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const c = state.cases.find(x => x.id === btn.dataset.id);
+      if (c) openEditCaseModal(c, null);
+    };
+  });
+  document.querySelectorAll(".rowDeleteBtn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      deleteCase(btn.dataset.id, btn.dataset.citation);
+    };
   });
 }
 
@@ -1029,6 +1168,8 @@ function openNewCaseModal() {
       when_created: document.getElementById("f_whencreated").value || new Date().toISOString().slice(0,10),
       comments: document.getElementById("f_comments").value.trim() || null,
       created_by: state.user.id,
+      created_by_name: state.user.full_name,
+      last_updated_by_name: state.user.full_name,
     };
 
     const { error } = await sb.from("legal_cases").insert(payload);
@@ -1062,6 +1203,8 @@ async function openCaseDrawer(caseId) {
         <div class="case-summary">
           <div class="row"><span class="k">Case stage</span><span class="v"><span class="badge stage-${cls(c.case_stage)}">${esc(c.case_stage)}</span></span></div>
           <div class="row"><span class="k">Case current state</span><span class="v">${esc(c.case_current_state || "—")}</span></div>
+          <div class="row"><span class="k">Activity</span><span class="v">${activityBadge(c)}</span></div>
+          <div class="row"><span class="k">Entered / updated by</span><span class="v">${whoBadge(c)}</span></div>
           <div class="row"><span class="k">Case category</span><span class="v">${esc(c.case_category || "—")}</span></div>
           <div class="row"><span class="k">Matter type</span><span class="v">${esc(c.matter_type || "—")}</span></div>
           <div class="row"><span class="k">Evaluation score</span><span class="v">${c.evaluation_score ?? "—"}</span></div>
@@ -1083,6 +1226,7 @@ async function openCaseDrawer(caseId) {
         <div class="actions-row">
           <button class="btn btn-gold" id="logStepBtn">Log next step</button>
           <button class="btn btn-ghost" id="editCaseBtn">Edit case details</button>
+          <button class="btn btn-ghost" id="deleteCaseBtn" style="color:var(--red);border-color:var(--red);">Delete case</button>
         </div>
         ` : ""}
 
@@ -1135,6 +1279,10 @@ async function openCaseDrawer(caseId) {
   if (canEdit()) {
     overlay.querySelector("#logStepBtn").onclick = () => openLogStepModal(c, overlay);
     overlay.querySelector("#editCaseBtn").onclick = () => openEditCaseModal(c, overlay);
+    overlay.querySelector("#deleteCaseBtn").onclick = async () => {
+      const ok = await deleteCase(c.id, c.citation);
+      if (ok) overlay.remove();
+    };
   }
 }
 
@@ -1187,10 +1335,9 @@ function openLogStepModal(c, parentOverlay) {
     const { error } = await sb.from("case_stage_history").insert(payload);
     if (error) { toast("Could not log step: " + error.message, true); return; }
 
-    // if stage was set to Archived, also reflect on case_current_state
-    if (payload.stage === "Archived") {
-      await sb.from("legal_cases").update({ case_current_state: "CASE CLOSED" }).eq("id", c.id);
-    }
+    const caseUpdate = { last_updated_by_name: state.user.full_name };
+    if (payload.stage === "Archived") caseUpdate.case_current_state = "CASE CLOSED";
+    await sb.from("legal_cases").update(caseUpdate).eq("id", c.id);
 
     overlay.remove();
     if (parentOverlay) parentOverlay.remove();
@@ -1274,6 +1421,7 @@ function openEditCaseModal(c, parentOverlay) {
       cost_center: document.getElementById("e_costcenter").value.trim() || null,
       when_created: document.getElementById("e_whencreated").value || null,
       comments: document.getElementById("e_comments").value.trim() || null,
+      last_updated_by_name: state.user.full_name,
     };
     const { error } = await sb.from("legal_cases").update(payload).eq("id", c.id);
     if (error) { toast("Could not save changes: " + error.message, true); return; }
