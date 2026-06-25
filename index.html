@@ -278,7 +278,8 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; widt
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 6px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 table { width: 100%; border-collapse: collapse; }
 thead th {
@@ -364,6 +365,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
   overflow-y: auto;
   box-shadow: -10px 0 40px rgba(0,0,0,0.25);
 }
+.drawer.drawer-wide { width: 820px; }
 
 .modal-box {
   background: var(--white);
@@ -570,7 +572,96 @@ const root = document.getElementById("app");
 const cls = (s) => s.replace(/\s+/g, "-");
 const money = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString();
 const fdate = (d) => d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fdatetime = (d) => d ? new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 const esc = (s) => (s ?? "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const canEdit = () => state.user.role === "manager" || state.user.role === "admin";
+
+// ---------- field metadata (used for edit-history display + CSV export) ----------
+const FIELD_META = {
+  citation:             { label: "Citation",              type: "text"  },
+  evaluation_score:     { label: "Evaluation score",      type: "text"  },
+  quantum:              { label: "Quantum",                type: "money" },
+  legal_provision:      { label: "Legal provision",        type: "money" },
+  estimated_legal_fees: { label: "Estimated legal fees",   type: "money" },
+  damages:              { label: "Damages",                type: "money" },
+  filing_date:          { label: "Filing date",            type: "date"  },
+  law_firm:             { label: "Law firm",               type: "text"  },
+  cause_of_action:      { label: "Cause of action",        type: "text"  },
+  case_stage:           { label: "Case stage",             type: "text"  },
+  matter_type:          { label: "Matter type",            type: "text"  },
+  cost_center:          { label: "Cost center",            type: "text"  },
+  forum:                { label: "Forum",                  type: "text"  },
+  in_charge_counsel:    { label: "In-charge counsel",       type: "text"  },
+  assigned_counsel:     { label: "Assigned counsel",        type: "text"  },
+  case_category:        { label: "Case category",          type: "text"  },
+  case_current_state:   { label: "Case current state",      type: "text"  },
+  when_created:         { label: "When created",           type: "date"  },
+  comments:             { label: "Comments",                type: "text"  },
+};
+
+function formatFieldValue(type, value) {
+  if (value == null || value === "") return "—";
+  if (type === "money") return money(value);
+  if (type === "date") return fdate(value);
+  return esc(value);
+}
+
+function buildChangeDiff(before, after) {
+  const changes = {};
+  Object.keys(FIELD_META).forEach((key) => {
+    const ov = before[key] ?? null;
+    const nv = after[key] ?? null;
+    if (String(ov) !== String(nv)) changes[key] = { old: ov, new: nv };
+  });
+  return changes;
+}
+
+// ---------- CSV export ----------
+const EXPORT_COLUMNS = [
+  { key: "citation",             header: "citation" },
+  { key: "evaluation_score",     header: "Evaluation Score" },
+  { key: "quantum",              header: "Quantum" },
+  { key: "legal_provision",      header: "Legal Provision" },
+  { key: "estimated_legal_fees", header: "Estimated Legal Fees" },
+  { key: "damages",              header: "Damages" },
+  { key: "filing_date",          header: "Filling Date" },
+  { key: "law_firm",             header: "Law Firm" },
+  { key: "cause_of_action",      header: "Cause of Action" },
+  { key: "case_stage",           header: "Case Stage" },
+  { key: "matter_type",          header: "Matter Type" },
+  { key: "cost_center",          header: "Cost Center" },
+  { key: "forum",                header: "Forum" },
+  { key: "in_charge_counsel",    header: "In Charge Counsel" },
+  { key: "assigned_counsel",     header: "Assigned Counsel" },
+  { key: "case_category",        header: "Case Category" },
+  { key: "case_current_state",   header: "Case Current State" },
+  { key: "when_created",         header: "whenCreated" },
+  { key: "comments",             header: "Comments" },
+];
+
+function csvEscape(val) {
+  if (val == null) return "";
+  const s = String(val);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportCasesToCSV(rows) {
+  if (!rows || rows.length === 0) { toast("No cases to export with the current filters.", true); return; }
+  const header = EXPORT_COLUMNS.map(c => csvEscape(c.header)).join(",");
+  const lines = rows.map(r => EXPORT_COLUMNS.map(c => csvEscape(r[c.key])).join(","));
+  const csv = [header, ...lines].join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `legal_cases_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} case(s) to CSV.`);
+}
 
 function toast(msg, isError) {
   const t = document.createElement("div");
@@ -709,8 +800,19 @@ async function loadHistory(caseId) {
   return data || [];
 }
 
+async function loadAuditLog(caseId) {
+  const { data, error } = await sb
+    .from("case_audit_log")
+    .select("*")
+    .eq("case_id", caseId)
+    .order("changed_at", { ascending: false });
+  if (error) { toast("Could not load edit history: " + error.message, true); return []; }
+  return data || [];
+}
+
 // ---------- shell ----------
 function renderApp() {
+  const isAdmin = state.user.role === "admin";
   root.innerHTML = `
     <div class="topbar">
       <div class="brand">
@@ -719,6 +821,7 @@ function renderApp() {
       </div>
       <div class="who">
         <span>${esc(state.user.full_name)} <span style="opacity:0.6">(${esc(state.user.role)})</span></span>
+        ${isAdmin ? `<button id="manageStaffBtn">Manage staff</button>` : ""}
         <button id="logoutBtn">Sign out</button>
       </div>
     </div>
@@ -726,6 +829,7 @@ function renderApp() {
     <footer class="foot">Stanbic Bank Uganda — Recoveries &amp; Rehabilitation Unit · Internal use only</footer>
   `;
   document.getElementById("logoutBtn").onclick = doLogout;
+  if (isAdmin) document.getElementById("manageStaffBtn").onclick = openStaffManager;
   renderDashboard();
 }
 
@@ -759,7 +863,10 @@ function renderDashboard() {
         <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
         <h2>Legal Cases</h2>
       </div>
-      <button class="btn btn-gold" id="newCaseBtn">+ Add case</button>
+      <div class="actions-row" style="margin:0;">
+        <button class="btn btn-ghost" id="exportCsvBtn">Export CSV</button>
+        ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
+      </div>
     </div>
 
     <div class="stat-row">
@@ -829,7 +936,8 @@ function renderDashboard() {
     </div>
   `;
 
-  document.getElementById("newCaseBtn").onclick = openNewCaseModal;
+  document.getElementById("exportCsvBtn").onclick = () => exportCasesToCSV(visibleCases());
+  if (canEdit()) document.getElementById("newCaseBtn").onclick = openNewCaseModal;
   document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; renderDashboard(); };
   document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; renderDashboard(); };
   document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; renderDashboard(); };
@@ -937,6 +1045,7 @@ async function openCaseDrawer(caseId) {
   const c = state.cases.find(x => x.id === caseId);
   if (!c) return;
   const history = await loadHistory(caseId);
+  const auditLog = await loadAuditLog(caseId);
 
   const overlay = document.createElement("div");
   overlay.className = "overlay";
@@ -970,10 +1079,12 @@ async function openCaseDrawer(caseId) {
           ${c.comments ? `<div class="row"><span class="k">Comments</span><span class="v">${esc(c.comments)}</span></div>` : ""}
         </div>
 
+        ${canEdit() ? `
         <div class="actions-row">
           <button class="btn btn-gold" id="logStepBtn">Log next step</button>
           <button class="btn btn-ghost" id="editCaseBtn">Edit case details</button>
         </div>
+        ` : ""}
 
         <div class="section-label">Case timeline</div>
         <div class="timeline" id="timelineWrap">
@@ -988,8 +1099,31 @@ async function openCaseDrawer(caseId) {
                 ${h.outcome ? `<div class="tl-outcome">${esc(h.outcome)}</div>` : ""}
                 ${h.next_action ? `<div class="tl-next">Next: ${esc(h.next_action)}${h.next_action_date ? " — " + fdate(h.next_action_date) : ""}</div>` : ""}
                 ${h.remarks ? `<div class="tl-remarks">${esc(h.remarks)}</div>` : ""}
+                ${h.logged_by_name ? `<div class="tl-remarks" style="opacity:0.7;">Logged by ${esc(h.logged_by_name)}</div>` : ""}
               </div>
             `).join("")
+          }
+        </div>
+
+        <div class="section-label">Edit history</div>
+        <div class="timeline" id="auditWrap">
+          ${auditLog.length === 0 ? `<p style="color:var(--muted); font-size:13px;">No edits logged yet.</p>` :
+            auditLog.map((a) => {
+              const changeRows = Object.entries(a.changes || {}).map(([key, ch]) => {
+                const meta = FIELD_META[key] || { label: key, type: "text" };
+                return `<div class="tl-remarks"><strong>${esc(meta.label)}:</strong> ${formatFieldValue(meta.type, ch.old)} → ${formatFieldValue(meta.type, ch.new)}</div>`;
+              }).join("");
+              return `
+                <div class="tl-item">
+                  <div class="tl-dot"></div>
+                  <div class="tl-head">
+                    <span class="tl-stage">${esc(a.changed_by_name || "Unknown")}</span>
+                    <span class="tl-date">${fdatetime(a.changed_at)}</span>
+                  </div>
+                  ${changeRows}
+                </div>
+              `;
+            }).join("")
           }
         </div>
       </div>
@@ -998,8 +1132,10 @@ async function openCaseDrawer(caseId) {
   document.body.appendChild(overlay);
   overlay.querySelector(".close-x").onclick = () => overlay.remove();
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  overlay.querySelector("#logStepBtn").onclick = () => openLogStepModal(c, overlay);
-  overlay.querySelector("#editCaseBtn").onclick = () => openEditCaseModal(c, overlay);
+  if (canEdit()) {
+    overlay.querySelector("#logStepBtn").onclick = () => openLogStepModal(c, overlay);
+    overlay.querySelector("#editCaseBtn").onclick = () => openEditCaseModal(c, overlay);
+  }
 }
 
 // ---------- log step modal ----------
@@ -1046,6 +1182,7 @@ function openLogStepModal(c, parentOverlay) {
       next_action_date: document.getElementById("s_nextdate").value || null,
       remarks: document.getElementById("s_remarks").value.trim() || null,
       logged_by: state.user.id,
+      logged_by_name: state.user.full_name,
     };
     const { error } = await sb.from("case_stage_history").insert(payload);
     if (error) { toast("Could not log step: " + error.message, true); return; }
@@ -1140,11 +1277,192 @@ function openEditCaseModal(c, parentOverlay) {
     };
     const { error } = await sb.from("legal_cases").update(payload).eq("id", c.id);
     if (error) { toast("Could not save changes: " + error.message, true); return; }
+
+    const changes = buildChangeDiff(c, payload);
+    if (Object.keys(changes).length > 0) {
+      await sb.from("case_audit_log").insert({
+        case_id: c.id,
+        changed_by: state.user.id,
+        changed_by_name: state.user.full_name,
+        changes,
+      });
+    }
+
     overlay.remove();
     if (parentOverlay) parentOverlay.remove();
     toast("Case updated.");
     await loadCases();
     renderDashboard();
+  };
+}
+
+// ---------- staff manager (admin only) ----------
+async function loadUsers() {
+  const { data, error } = await sb.from("app_users").select("id,username,full_name,role,created_at").order("created_at", { ascending: true });
+  if (error) { toast("Could not load staff: " + error.message, true); return []; }
+  return data || [];
+}
+
+async function openStaffManager() {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="drawer drawer-wide">
+      <div class="drawer-head">
+        <div><h3>Manage staff</h3><div class="acct-line">Create, edit, and remove staff accounts</div></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div class="actions-row">
+          <button class="btn btn-gold" id="addStaffBtn">+ Add staff account</button>
+        </div>
+        <div class="section-label">Existing accounts</div>
+        <div id="staffListWrap"><p style="color:var(--muted); font-size:13px;">Loading…</p></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#addStaffBtn").onclick = () => openAddStaffModal(overlay);
+
+  await renderStaffList(overlay);
+}
+
+async function renderStaffList(overlay) {
+  const users = await loadUsers();
+  const wrap = overlay.querySelector("#staffListWrap");
+  wrap.innerHTML = users.length === 0 ? `<p style="color:var(--muted); font-size:13px;">No accounts found.</p>` : `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Username</th><th>Full name</th><th>Role</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+          ${users.map(u => `
+            <tr>
+              <td class="acct">${esc(u.username)}</td>
+              <td>${esc(u.full_name)}</td>
+              <td>
+                <select data-id="${u.id}" class="roleSelect" ${u.username === state.user.username ? "disabled" : ""}>
+                  ${["officer","manager","admin"].map(r => `<option value="${r}" ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}
+                </select>
+              </td>
+              <td>${fdate(u.created_at)}</td>
+              <td style="white-space:nowrap;">
+                <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                  <button class="btn btn-ghost resetPwBtn" data-id="${u.id}" data-name="${esc(u.full_name)}" style="padding:4px 10px;font-size:12px;">Reset password</button>
+                  ${u.username === state.user.username ? "" : `<button class="btn btn-danger deleteUserBtn" data-id="${u.id}" data-name="${esc(u.full_name)}" style="padding:4px 10px;font-size:12px;">Delete</button>`}
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  wrap.querySelectorAll(".roleSelect").forEach(sel => {
+    sel.onchange = async () => {
+      const { error } = await sb.from("app_users").update({ role: sel.value }).eq("id", sel.dataset.id);
+      if (error) { toast("Could not update role: " + error.message, true); return; }
+      toast("Role updated.");
+    };
+  });
+
+  wrap.querySelectorAll(".resetPwBtn").forEach(btn => {
+    btn.onclick = () => openResetPasswordModal(btn.dataset.id, btn.dataset.name, overlay);
+  });
+
+  wrap.querySelectorAll(".deleteUserBtn").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`Remove account for ${btn.dataset.name}? This cannot be undone.`)) return;
+      const { error } = await sb.from("app_users").delete().eq("id", btn.dataset.id);
+      if (error) { toast("Could not delete account: " + error.message, true); return; }
+      toast("Account removed.");
+      await renderStaffList(overlay);
+    };
+  });
+}
+
+function openAddStaffModal(parentOverlay) {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div><h3>Add staff account</h3></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>Full name *</label><input id="ns_fullname" /></div>
+        <div class="field"><label>Username *</label><input id="ns_username" placeholder="e.g. jbusiku" /></div>
+        <div class="field"><label>Role</label>
+          <select id="ns_role">
+            <option value="officer">officer</option>
+            <option value="manager">manager</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <div class="field"><label>Password *</label><input type="text" id="ns_password" value="Stanbic@2026" /></div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="createStaffBtn">Create account</button>
+          <button class="btn btn-ghost" id="cancelStaffBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelStaffBtn").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#createStaffBtn").onclick = async () => {
+    const full_name = document.getElementById("ns_fullname").value.trim();
+    const username = document.getElementById("ns_username").value.trim();
+    const role = document.getElementById("ns_role").value;
+    const password = document.getElementById("ns_password").value;
+    if (!full_name || !username || !password) { toast("Full name, username and password are required.", true); return; }
+
+    const password_hash = await sha256Hex(password);
+    const { error } = await sb.from("app_users").insert({ username, password_hash, full_name, role });
+    if (error) { toast("Could not create account: " + error.message, true); return; }
+    overlay.remove();
+    toast("Account created.");
+    await renderStaffList(parentOverlay);
+  };
+}
+
+function openResetPasswordModal(userId, userName, parentOverlay) {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div><h3>Reset password</h3><div class="acct-line">${esc(userName)}</div></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>New password *</label><input type="text" id="rp_password" value="Stanbic@2026" /></div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="confirmResetBtn">Set password</button>
+          <button class="btn btn-ghost" id="cancelResetBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelResetBtn").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#confirmResetBtn").onclick = async () => {
+    const password = document.getElementById("rp_password").value;
+    if (!password) { toast("Enter a new password.", true); return; }
+    const password_hash = await sha256Hex(password);
+    const { error } = await sb.from("app_users").update({ password_hash }).eq("id", userId);
+    if (error) { toast("Could not reset password: " + error.message, true); return; }
+    overlay.remove();
+    toast("Password reset.");
+    await renderStaffList(parentOverlay);
   };
 }
 
