@@ -607,9 +607,9 @@ const canEdit = () => state.user.role === "manager" || state.user.role === "admi
 // ---------- field metadata (used for edit-history display + CSV export) ----------
 const FIELD_META = {
   citation:             { label: "Citation",              type: "text"  },
-  evaluation_score:     { label: "Evaluation score",      type: "text"  },
+  Customer_Name:     { label: "Customer Name",      type: "text"  },
   quantum:              { label: "Quantum",                type: "money" },
-  legal_provision:      { label: "Legal provision",        type: "money" },
+  legal_provision:      { label: "Loan Account",        type: "text" },
   estimated_legal_fees: { label: "Estimated legal fees",   type: "money" },
   damages:              { label: "Damages",                type: "money" },
   filing_date:          { label: "Filing date",            type: "date"  },
@@ -620,7 +620,6 @@ const FIELD_META = {
   cost_center:          { label: "Cost center",            type: "text"  },
   forum:                { label: "Forum",                  type: "text"  },
   in_charge_counsel:    { label: "In-charge counsel",       type: "text"  },
-  assigned_counsel:     { label: "Assigned counsel",        type: "text"  },
   case_category:        { label: "Case category",          type: "text"  },
   case_current_state:   { label: "Case current state",      type: "text"  },
   when_created:         { label: "When created",           type: "date"  },
@@ -682,9 +681,9 @@ function buildChangeDiff(before, after) {
 // ---------- CSV export ----------
 const EXPORT_COLUMNS = [
   { key: "citation",             header: "citation" },
-  { key: "evaluation_score",     header: "Evaluation Score" },
+  { key: "Customer_Name",     header: "Customer Name" },
   { key: "quantum",              header: "Quantum" },
-  { key: "legal_provision",      header: "Legal Provision" },
+  { key: "Loan Account Number",      header: "Loan Account Number" },
   { key: "estimated_legal_fees", header: "Estimated Legal Fees" },
   { key: "damages",              header: "Damages" },
   { key: "filing_date",          header: "Filling Date" },
@@ -695,7 +694,6 @@ const EXPORT_COLUMNS = [
   { key: "cost_center",          header: "Cost Center" },
   { key: "forum",                header: "Forum" },
   { key: "in_charge_counsel",    header: "In Charge Counsel" },
-  { key: "assigned_counsel",     header: "Assigned Counsel" },
   { key: "case_category",        header: "Case Category" },
   { key: "case_current_state",   header: "Case Current State" },
   { key: "when_created",         header: "whenCreated" },
@@ -1103,9 +1101,9 @@ function openNewCaseModal() {
           <div class="field full"><label>Citation *</label><input id="f_citation" placeholder="e.g. STANBIC BANK (U) LTD VERSUS OPOLOT MOSES  CIVIL SUIT NO. 345 OF 2019" /></div>
           <div class="field"><label>Cause of action</label><input id="f_cause" /></div>
           <div class="field"><label>Filing date</label><input type="date" id="f_filingdate" /></div>
-          <div class="field"><label>Evaluation score</label><input type="number" step="0.1" id="f_evalscore" /></div>
+          <div class="field"><label>Customer_Name</label><input type="text" /></div>
           <div class="field"><label>Quantum (UGX)</label><input type="number" id="f_quantum" /></div>
-          <div class="field"><label>Legal provision (UGX)</label><input type="number" id="f_provision" /></div>
+          <div class="field"><label>Loan Account Number</label><input type="text" id="f_provision" /></div>
           <div class="field"><label>Estimated legal fees (UGX)</label><input type="number" id="f_fees" /></div>
           <div class="field"><label>Damages (UGX)</label><input type="number" id="f_damages" /></div>
           <div class="section-label full">Case status</div>
@@ -1121,7 +1119,6 @@ function openNewCaseModal() {
           </div>
           <div class="field"><label>Forum</label><input id="f_forum" list="forumList" /></div>
           <div class="field"><label>In-charge counsel</label><input id="f_incharge" /></div>
-          <div class="field"><label>Assigned counsel</label><input id="f_assigned" /></div>
           <div class="field"><label>Cost center</label><input id="f_costcenter" list="costCenterList" /></div>
           <div class="field"><label>When created</label><input type="date" id="f_whencreated" value="${new Date().toISOString().slice(0,10)}" /></div>
           <div class="field full"><label>Comments</label><textarea id="f_comments"></textarea></div>
@@ -1207,16 +1204,15 @@ async function openCaseDrawer(caseId) {
           <div class="row"><span class="k">Entered / updated by</span><span class="v">${whoBadge(c)}</span></div>
           <div class="row"><span class="k">Case category</span><span class="v">${esc(c.case_category || "—")}</span></div>
           <div class="row"><span class="k">Matter type</span><span class="v">${esc(c.matter_type || "—")}</span></div>
-          <div class="row"><span class="k">Evaluation score</span><span class="v">${c.evaluation_score ?? "—"}</span></div>
+          <div class="row"><span class="k">Customer_Name</span><span class="v">${c.Customer_Name ?? "—"}</span></div>
           <div class="row"><span class="k">Quantum</span><span class="v">${money(c.quantum)}</span></div>
-          <div class="row"><span class="k">Legal provision</span><span class="v">${money(c.legal_provision)}</span></div>
+          <div class="row"><span class="k">Loan Account Number</span><span class="v">${text(c.Loan_Account_Number)}</span></div>
           <div class="row"><span class="k">Estimated legal fees</span><span class="v">${money(c.estimated_legal_fees)}</span></div>
           <div class="row"><span class="k">Damages</span><span class="v">${money(c.damages)}</span></div>
           <div class="row"><span class="k">Filing date</span><span class="v">${fdate(c.filing_date)}</span></div>
           <div class="row"><span class="k">Law firm</span><span class="v">${esc(c.law_firm || "—")}</span></div>
           <div class="row"><span class="k">Forum</span><span class="v">${esc(c.forum || "—")}</span></div>
           <div class="row"><span class="k">In-charge counsel</span><span class="v">${esc(c.in_charge_counsel || "—")}</span></div>
-          <div class="row"><span class="k">Assigned counsel</span><span class="v">${esc(c.assigned_counsel || "—")}</span></div>
           <div class="row"><span class="k">Cost center</span><span class="v">${esc(c.cost_center || "—")}</span></div>
           <div class="row"><span class="k">When created</span><span class="v">${fdate(c.when_created)}</span></div>
           ${c.comments ? `<div class="row"><span class="k">Comments</span><span class="v">${esc(c.comments)}</span></div>` : ""}
@@ -1362,9 +1358,8 @@ function openEditCaseModal(c, parentOverlay) {
           <div class="field full"><label>Citation</label><input id="e_citation" value="${esc(c.citation)}" /></div>
           <div class="field"><label>Cause of action</label><input id="e_cause" value="${esc(c.cause_of_action || "")}" /></div>
           <div class="field"><label>Filing date</label><input type="date" id="e_filingdate" value="${c.filing_date || ""}" /></div>
-          <div class="field"><label>Evaluation score</label><input type="number" step="0.1" id="e_evalscore" value="${c.evaluation_score ?? ""}" /></div>
-          <div class="field"><label>Quantum (UGX)</label><input type="number" id="e_quantum" value="${c.quantum ?? ""}" /></div>
-          <div class="field"><label>Legal provision (UGX)</label><input type="number" id="e_provision" value="${c.legal_provision ?? ""}" /></div>
+          <div class="field"><label>Customer_Name</label><input type="text"  id="e_customer _name" value="${c.Customer_Name ?? ""}" /></div>
+          <div class="field"><label>Quantum (UGX)</label><input type="number" id="e_quantum" value="${c.quantum ?? ""}" /></div>         
           <div class="field"><label>Estimated legal fees (UGX)</label><input type="number" id="e_fees" value="${c.estimated_legal_fees ?? ""}" /></div>
           <div class="field"><label>Damages (UGX)</label><input type="number" id="e_damages" value="${c.damages ?? ""}" /></div>
           <div class="field"><label>Case stage</label>
@@ -1378,7 +1373,6 @@ function openEditCaseModal(c, parentOverlay) {
           </div>
           <div class="field"><label>Forum</label><input id="e_forum" list="e_forumList" value="${esc(c.forum || "")}" /></div>
           <div class="field"><label>In-charge counsel</label><input id="e_incharge" value="${esc(c.in_charge_counsel || "")}" /></div>
-          <div class="field"><label>Assigned counsel</label><input id="e_assigned" value="${esc(c.assigned_counsel || "")}" /></div>
           <div class="field"><label>Cost center</label><input id="e_costcenter" list="e_costCenterList" value="${esc(c.cost_center || "")}" /></div>
           <div class="field"><label>When created</label><input type="date" id="e_whencreated" value="${c.when_created || ""}" /></div>
           <div class="field full"><label>Comments</label><textarea id="e_comments">${esc(c.comments || "")}</textarea></div>
