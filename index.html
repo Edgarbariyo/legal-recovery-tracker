@@ -562,7 +562,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 const STAGES = ["Pre-Trial", "Trial", "Post-Trial", "Judged", "Execution", "Archived"];
 const LAW_FIRMS = [
   "Cristal Advocates",
-  "ARCADIA  ADVOCATES",
+  "ARCADIA ADVOCATES",
   "S and L Advocates",
   "Kalikumutima and Co Advocates",
   "Ligomarc Advocates",
@@ -575,6 +575,8 @@ const LAW_FIRMS = [
   "Kyagaba and Otatiina (Dentons)",
   "K and K Advocates",
   "KNT Advocates",
+  "SIGNUM ADVOCATES",
+  "Kampala Associated Advocates",
 ];
 const MATTER_TYPES = ["CIVIL", "CRIMINAL", "COMMERCIAL"];
 const COST_CENTERS = ["BUSINESS BANKING", "PERSONAL & BUSINESS BANKING", "CORPORATE & INVESTMENT BANKING"];
@@ -1345,6 +1347,14 @@ function validateImportRow(mapped) {
       errors.push(`Case stage "${mapped.case_stage}" doesn't match any of: ${STAGES.join(", ")}`);
     } else {
       mapped.case_stage = match; // normalize to exact casing
+    }
+  }
+  if (mapped.law_firm) {
+    const match = LAW_FIRMS.find(f => f.toLowerCase().trim() === String(mapped.law_firm).trim().toLowerCase());
+    if (!match) {
+      errors.push(`Law firm "${mapped.law_firm}" doesn't match any firm on file (check spelling/spacing exactly, or ask for it to be added)`);
+    } else {
+      mapped.law_firm = match; // normalize to the exact stored spelling
     }
   }
   if (mapped.filing_date === null && mapped.filing_date !== undefined) {
