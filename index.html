@@ -982,7 +982,7 @@ function visibleCases() {
     if (f.state && c.case_current_state !== f.state) return false;
     if (f.search) {
       const s = f.search.toLowerCase();
-      const hay = `${c.citation} ${c.law_firm || ""} ${c.cause_of_action || ""} ${c.in_charge_counsel || ""} ${c.assigned_counsel || ""}`.toLowerCase();
+      const hay = `${c.citation} ${c.customer_name || ""} ${c.legal_provision || ""} ${c.law_firm || ""} ${c.cause_of_action || ""} ${c.in_charge_counsel || ""} ${c.assigned_counsel || ""}`.toLowerCase();
       if (!hay.includes(s)) return false;
     }
     return true;
@@ -1049,6 +1049,8 @@ function renderDashboard() {
         <thead>
           <tr>
             <th>Citation</th>
+            <th>Customer Name</th>
+            <th>Loan Account No.</th>
             <th>Law Firm</th>
             <th>Quantum</th>
             <th>Stage</th>
@@ -1061,10 +1063,12 @@ function renderDashboard() {
           </tr>
         </thead>
         <tbody id="caseRows">
-          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="${canEdit() ? 10 : 9}">No cases match these filters.</td></tr>` :
+          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="${canEdit() ? 12 : 11}">No cases match these filters.</td></tr>` :
             rows.map(c => `
               <tr data-id="${c.id}">
                 <td class="acct">${esc(c.citation)}</td>
+                <td>${esc(c.customer_name) || "—"}</td>
+                <td class="acct">${esc(c.legal_provision) || "—"}</td>
                 <td>${esc(c.law_firm || "—")}</td>
                 <td>${money(c.quantum)}</td>
                 <td><span class="badge stage-${cls(c.case_stage)}">${esc(c.case_stage)}</span></td>
