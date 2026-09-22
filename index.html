@@ -37,7 +37,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: 12.5px;
   line-height: 1.5;
 }
 
@@ -69,7 +69,7 @@ a { color: var(--navy-mid); }
 .topbar .brand .mark {
   font-family: var(--serif);
   font-weight: 700;
-  font-size: 19px;
+  font-size: 16px;
   letter-spacing: 0.2px;
 }
 
@@ -100,7 +100,7 @@ a { color: var(--navy-mid); }
 }
 .topbar .who button:hover { background: rgba(255,255,255,0.08); }
 
-main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; width: 100%; }
+main { flex: 1; padding: 24px 28px 60px; width: 100%; }
 
 /* ---------- Login screen ---------- */
 .login-screen {
@@ -140,7 +140,7 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; widt
 
 .login-card h1 {
   font-family: var(--serif);
-  font-size: 22px;
+  font-size: 19px;
   margin: 0 0 4px;
   color: var(--navy-deep);
 }
@@ -212,7 +212,7 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; widt
 }
 .page-head h2 {
   font-family: var(--serif);
-  font-size: 24px;
+  font-size: 19px;
   margin: 0;
   color: var(--navy-deep);
 }
@@ -242,7 +242,7 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; widt
 }
 .stat-card .n {
   font-family: var(--serif);
-  font-size: 26px;
+  font-size: 21px;
   color: var(--navy-deep);
   line-height: 1;
 }
@@ -284,7 +284,7 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 1280px; margin: 0 auto; widt
 table { width: 100%; border-collapse: collapse; }
 thead th {
   text-align: left;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--muted);
@@ -303,7 +303,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 
 .acct {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: var(--navy-mid);
 }
 .empty-row td {
@@ -319,7 +319,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
   gap: 5px;
   padding: 3px 9px;
   border-radius: 100px;
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -419,7 +419,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 }
 .drawer-head h3, .modal-head h3 {
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: 15px;
   margin: 0;
 }
 .drawer-head .acct-line, .modal-head .acct-line {
@@ -470,7 +470,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
   display: flex;
   justify-content: space-between;
   padding: 5px 0;
-  font-size: 13px;
+  font-size: 12px;
   border-bottom: 1px dashed var(--line);
 }
 .case-summary .row:last-child { border-bottom: none; }
@@ -498,7 +498,7 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 }
 .tl-item.is-latest .tl-dot { border-color: var(--gold); background: var(--gold); }
 .tl-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.tl-stage { font-weight: 700; color: var(--navy-deep); font-size: 13.5px; }
+.tl-stage { font-weight: 700; color: var(--navy-deep); font-size: 12.5px; }
 .tl-date { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .tl-outcome { font-size: 13px; margin-top: 4px; }
 .tl-next {
@@ -584,7 +584,7 @@ const CASE_CURRENT_STATES = ["CASE STILL OPEN", "CASE CLOSED"];
 let state = {
   user: null,
   cases: [],
-  filters: { search: "", stage: "", state: "CASE STILL OPEN" },
+  filters: { search: "", stage: "", state: "CASE STILL OPEN", createdFrom: "", createdTo: "", nextActionFrom: "", nextActionTo: "" },
 };
 
 const root = document.getElementById("app");
@@ -675,6 +675,15 @@ function activityBadge(c) {
   const badgeClass = revisited ? "badge-activity-revisited" : "badge-activity-new";
   const dateLine = c.last_engaged_at ? `<div class="activity-date">${fdate(c.last_engaged_at)}</div>` : "";
   return `<span class="badge-activity ${badgeClass}">${esc(label)}</span>${dateLine}`;
+}
+
+function nextActionCell(c) {
+  if (!c.next_action_date) return `<span style="color:var(--muted);">—</span>`;
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = c.next_action_date < today;
+  const dateHtml = `<span style="${overdue ? "color:var(--red);font-weight:600;" : ""}">${fdate(c.next_action_date)}</span>`;
+  const actionHtml = c.next_action ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${esc(c.next_action)}</div>` : "";
+  return dateHtml + actionHtml;
 }
 
 function whoBadge(c) {
@@ -928,7 +937,30 @@ async function doLogout() {
 async function loadCases() {
   const { data, error } = await sb.from("legal_cases").select("*").order("updated_at", { ascending: false });
   if (error) { toast("Could not load cases: " + error.message, true); return; }
-  state.cases = data || [];
+  let cases = data || [];
+
+  // Pull each case's most recently logged "next action" date from its timeline,
+  // so we can filter/display it on the list without changing the legal_cases table.
+  const ids = cases.map(c => c.id);
+  if (ids.length > 0) {
+    const { data: hist, error: histErr } = await sb
+      .from("case_stage_history")
+      .select("case_id, next_action, next_action_date, date_entered, created_at")
+      .in("case_id", ids)
+      .order("date_entered", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (!histErr && hist) {
+      const latestByCase = {};
+      hist.forEach(h => { latestByCase[h.case_id] = h; }); // ascending order, so last write = most recent entry
+      cases = cases.map(c => ({
+        ...c,
+        next_action: latestByCase[c.id]?.next_action || null,
+        next_action_date: latestByCase[c.id]?.next_action_date || null,
+      }));
+    }
+  }
+
+  state.cases = cases;
 }
 
 async function loadHistory(caseId) {
@@ -980,6 +1012,10 @@ function visibleCases() {
   return state.cases.filter((c) => {
     if (f.stage && c.case_stage !== f.stage) return false;
     if (f.state && c.case_current_state !== f.state) return false;
+    if (f.createdFrom && (!c.when_created || c.when_created < f.createdFrom)) return false;
+    if (f.createdTo && (!c.when_created || c.when_created > f.createdTo)) return false;
+    if (f.nextActionFrom && (!c.next_action_date || c.next_action_date < f.nextActionFrom)) return false;
+    if (f.nextActionTo && (!c.next_action_date || c.next_action_date > f.nextActionTo)) return false;
     if (f.search) {
       const s = f.search.toLowerCase();
       const hay = `${c.citation} ${c.customer_name || ""} ${c.legal_provision || ""} ${c.law_firm || ""} ${c.cause_of_action || ""} ${c.in_charge_counsel || ""} ${c.assigned_counsel || ""}`.toLowerCase();
@@ -989,82 +1025,11 @@ function visibleCases() {
   });
 }
 
-function renderDashboard() {
-  const main = document.getElementById("main");
-  const all = state.cases;
-  const counts = STAGES.reduce((acc, s) => { acc[s] = all.filter(c => c.case_stage === s).length; return acc; }, {});
-  const openCases = all.filter(c => c.case_current_state !== "CASE CLOSED");
-  const totalQuantum = openCases.reduce((sum, c) => sum + (Number(c.quantum) || 0), 0);
-  const totalFees = openCases.reduce((sum, c) => sum + (Number(c.estimated_legal_fees) || 0), 0);
-
-  const rows = visibleCases();
-
-  main.innerHTML = `
-    <div class="page-head">
-      <div>
-        <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
-        <h2>Legal Cases</h2>
-      </div>
-      ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
-    </div>
-
-    <div class="stat-row">
-      <div class="stat-card total">
-        <div class="n">${all.length}</div>
-        <div class="l">Total cases</div>
-      </div>
-      <div class="stat-card accent">
-        <div class="n">${money(totalQuantum)}</div>
-        <div class="l">Quantum (open cases)</div>
-      </div>
-      <div class="stat-card accent">
-        <div class="n">${money(totalFees)}</div>
-        <div class="l">Est. legal fees (open)</div>
-      </div>
-      ${STAGES.filter(s => s !== "Archived").map(s => `
-        <div class="stat-card">
-          <div class="n">${counts[s] || 0}</div>
-          <div class="l">${esc(s)}</div>
-        </div>
-      `).join("")}
-    </div>
-
-    <div class="toolbar">
-      <input type="search" id="searchBox" placeholder="Search citation, law firm, cause of action..." value="${esc(state.filters.search)}" />
-      <select id="stageFilter">
-        <option value="">All stages</option>
-        ${STAGES.map(s => `<option value="${s}" ${state.filters.stage === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
-      </select>
-      <select id="stateFilter">
-        <option value="">All states</option>
-        ${CASE_CURRENT_STATES.map(s => `<option value="${s}" ${state.filters.state === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
-      </select>
-      <div class="spacer"></div>
-      <span style="font-size:12px;color:var(--muted)">${rows.length} of ${all.length} shown</span>
-      <button class="btn btn-ghost" id="exportCsvBtn" style="padding:6px 12px;font-size:12.5px;">Export CSV</button>
-    </div>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Citation</th>
-            <th>Customer Name</th>
-            <th>Loan Account No.</th>
-            <th>Law Firm</th>
-            <th>Quantum</th>
-            <th>Stage</th>
-            <th>Case State</th>
-            <th>Counsel</th>
-            <th>Filing Date</th>
-            <th>Activity</th>
-            <th>Entered / Updated By</th>
-            ${canEdit() ? `<th></th>` : ""}
-          </tr>
-        </thead>
-        <tbody id="caseRows">
-          ${rows.length === 0 ? `<tr class="empty-row"><td colspan="${canEdit() ? 12 : 11}">No cases match these filters.</td></tr>` :
-            rows.map(c => `
+function renderCaseRowsHtml(rows) {
+  if (rows.length === 0) {
+    return `<tr class="empty-row"><td colspan="${canEdit() ? 13 : 12}">No cases match these filters.</td></tr>`;
+  }
+  return rows.map(c => `
               <tr data-id="${c.id}">
                 <td class="acct">${esc(c.citation)}</td>
                 <td>${esc(c.customer_name) || "—"}</td>
@@ -1076,6 +1041,7 @@ function renderDashboard() {
                 <td>${esc(c.in_charge_counsel || c.assigned_counsel || "—")}</td>
                 <td>${fdate(c.filing_date)}</td>
                 <td>${activityBadge(c)}</td>
+                <td>${nextActionCell(c)}</td>
                 <td>${whoBadge(c)}</td>
                 ${canEdit() ? `
                 <td>
@@ -1086,18 +1052,10 @@ function renderDashboard() {
                 </td>
                 ` : ""}
               </tr>
-            `).join("")
-          }
-        </tbody>
-      </table>
-    </div>
-  `;
+            `).join("");
+}
 
-  document.getElementById("exportCsvBtn").onclick = () => exportCasesToCSV(visibleCases());
-  if (canEdit()) document.getElementById("newCaseBtn").onclick = openNewCaseModal;
-  document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; renderDashboard(); };
-  document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; renderDashboard(); };
-  document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; renderDashboard(); };
+function wireCaseRowHandlers() {
   document.querySelectorAll("#caseRows tr[data-id]").forEach(tr => {
     tr.onclick = () => openCaseDrawer(tr.dataset.id);
   });
@@ -1114,6 +1072,150 @@ function renderDashboard() {
       deleteCase(btn.dataset.id, btn.dataset.citation);
     };
   });
+}
+
+// Updates just the table body, the "shown" count, and the summary stat cards
+// (Total cases, Quantum, Fees, per-stage counts) to reflect the current
+// filters — without touching the toolbar or any inputs, so the search box
+// never loses focus (a full renderDashboard() would recreate the input).
+function refreshTableOnly() {
+  const rows = visibleCases();
+  const tbody = document.getElementById("caseRows");
+  const countEl = document.getElementById("shownCount");
+  if (countEl) countEl.textContent = `${rows.length} of ${state.cases.length} shown`;
+  if (tbody) {
+    tbody.innerHTML = renderCaseRowsHtml(rows);
+    wireCaseRowHandlers();
+  }
+
+  const { counts, totalQuantum, totalFees } = computeStats(rows);
+  const totalEl = document.getElementById("statTotal");
+  if (totalEl) totalEl.textContent = rows.length;
+  const quantumEl = document.getElementById("statQuantum");
+  if (quantumEl) quantumEl.textContent = money(totalQuantum);
+  const feesEl = document.getElementById("statFees");
+  if (feesEl) feesEl.textContent = money(totalFees);
+  STAGES.filter(s => s !== "Archived").forEach(s => {
+    const el = document.getElementById(`statStage-${cls(s)}`);
+    if (el) el.textContent = counts[s] || 0;
+  });
+}
+
+function computeStats(rows) {
+  const counts = STAGES.reduce((acc, s) => { acc[s] = rows.filter(c => c.case_stage === s).length; return acc; }, {});
+  const openCases = rows.filter(c => c.case_current_state !== "CASE CLOSED");
+  const totalQuantum = openCases.reduce((sum, c) => sum + (Number(c.quantum) || 0), 0);
+  const totalFees = openCases.reduce((sum, c) => sum + (Number(c.estimated_legal_fees) || 0), 0);
+  return { counts, totalQuantum, totalFees };
+}
+
+function renderDashboard() {
+  const main = document.getElementById("main");
+  const rows = visibleCases();
+  const { counts, totalQuantum, totalFees } = computeStats(rows);
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
+        <h2>Legal Cases</h2>
+      </div>
+      ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
+    </div>
+
+    <div class="stat-row" id="statRow">
+      <div class="stat-card total">
+        <div class="n" id="statTotal">${rows.length}</div>
+        <div class="l">Total cases</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="n" id="statQuantum">${money(totalQuantum)}</div>
+        <div class="l">Quantum (open cases)</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="n" id="statFees">${money(totalFees)}</div>
+        <div class="l">Est. legal fees (open)</div>
+      </div>
+      ${STAGES.filter(s => s !== "Archived").map(s => `
+        <div class="stat-card">
+          <div class="n" id="statStage-${cls(s)}">${counts[s] || 0}</div>
+          <div class="l">${esc(s)}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="searchBox" placeholder="Search citation, law firm, cause of action..." value="${esc(state.filters.search)}" />
+      <select id="stageFilter">
+        <option value="">All stages</option>
+        ${STAGES.map(s => `<option value="${s}" ${state.filters.stage === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      </select>
+      <select id="stateFilter">
+        <option value="">All states</option>
+        ${CASE_CURRENT_STATES.map(s => `<option value="${s}" ${state.filters.state === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      </select>
+      <div class="spacer"></div>
+      <span id="shownCount" style="font-size:12px;color:var(--muted)">${rows.length} of ${state.cases.length} shown</span>
+      <button class="btn btn-ghost" id="exportCsvBtn" style="padding:6px 12px;font-size:12.5px;">Export CSV</button>
+    </div>
+
+    <div class="toolbar" style="margin-top:-6px;">
+      <span style="font-size:12px;color:var(--muted);">Created</span>
+      <input type="date" id="createdFromFilter" value="${state.filters.createdFrom}" title="Created from" />
+      <span style="font-size:12px;color:var(--muted);">to</span>
+      <input type="date" id="createdToFilter" value="${state.filters.createdTo}" title="Created to" />
+      <span style="font-size:12px;color:var(--muted);margin-left:10px;">Next action</span>
+      <input type="date" id="nextActionFromFilter" value="${state.filters.nextActionFrom}" title="Next action from" />
+      <span style="font-size:12px;color:var(--muted);">to</span>
+      <input type="date" id="nextActionToFilter" value="${state.filters.nextActionTo}" title="Next action to" />
+      <button class="btn btn-ghost" id="clearDateFiltersBtn" style="padding:5px 10px;font-size:12px;">Clear dates</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Citation</th>
+            <th>Customer Name</th>
+            <th>Loan Account No.</th>
+            <th>Law Firm</th>
+            <th>Quantum</th>
+            <th>Stage</th>
+            <th>Case State</th>
+            <th>Counsel</th>
+            <th>Filing Date</th>
+            <th>Activity</th>
+            <th>Next Action</th>
+            <th>Entered / Updated By</th>
+            ${canEdit() ? `<th></th>` : ""}
+          </tr>
+        </thead>
+        <tbody id="caseRows">${renderCaseRowsHtml(rows)}</tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById("exportCsvBtn").onclick = () => exportCasesToCSV(visibleCases());
+  if (canEdit()) document.getElementById("newCaseBtn").onclick = openNewCaseModal;
+  document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; refreshTableOnly(); };
+  document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; refreshTableOnly(); };
+  document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; refreshTableOnly(); };
+  document.getElementById("createdFromFilter").onchange = (e) => { state.filters.createdFrom = e.target.value; refreshTableOnly(); };
+  document.getElementById("createdToFilter").onchange = (e) => { state.filters.createdTo = e.target.value; refreshTableOnly(); };
+  document.getElementById("nextActionFromFilter").onchange = (e) => { state.filters.nextActionFrom = e.target.value; refreshTableOnly(); };
+  document.getElementById("nextActionToFilter").onchange = (e) => { state.filters.nextActionTo = e.target.value; refreshTableOnly(); };
+  document.getElementById("clearDateFiltersBtn").onclick = () => {
+    state.filters.createdFrom = "";
+    state.filters.createdTo = "";
+    state.filters.nextActionFrom = "";
+    state.filters.nextActionTo = "";
+    document.getElementById("createdFromFilter").value = "";
+    document.getElementById("createdToFilter").value = "";
+    document.getElementById("nextActionFromFilter").value = "";
+    document.getElementById("nextActionToFilter").value = "";
+    refreshTableOnly();
+  };
+  wireCaseRowHandlers();
 }
 
 // ---------- new case modal ----------
