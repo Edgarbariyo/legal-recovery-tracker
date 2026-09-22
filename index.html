@@ -535,6 +535,7 @@ footer.foot {
 <div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 // ============================================================
 // SUPABASE CONFIG
@@ -1120,7 +1121,10 @@ function renderDashboard() {
         <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
         <h2>Legal Cases</h2>
       </div>
-      ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
+      <div style="display:flex; gap:10px;">
+        ${state.user.role === "admin" ? `<button class="btn btn-ghost" id="bulkImportBtn">Bulk import</button>` : ""}
+        ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
+      </div>
     </div>
 
     <div class="stat-row" id="statRow">
@@ -1197,6 +1201,7 @@ function renderDashboard() {
 
   document.getElementById("exportCsvBtn").onclick = () => exportCasesToCSV(visibleCases());
   if (canEdit()) document.getElementById("newCaseBtn").onclick = openNewCaseModal;
+  if (state.user.role === "admin") document.getElementById("bulkImportBtn").onclick = openBulkImportModal;
   document.getElementById("searchBox").oninput = (e) => { state.filters.search = e.target.value; refreshTableOnly(); };
   document.getElementById("stageFilter").onchange = (e) => { state.filters.stage = e.target.value; refreshTableOnly(); };
   document.getElementById("stateFilter").onchange = (e) => { state.filters.state = e.target.value; refreshTableOnly(); };
@@ -1216,6 +1221,292 @@ function renderDashboard() {
     refreshTableOnly();
   };
   wireCaseRowHandlers();
+}
+
+// ---------- bulk import (admin only) ----------
+
+// DB column keys (not form ids) for validating imported rows. Mirrors
+// REQUIRED_FIELD_DEFS above but keyed to the actual legal_cases columns.
+// Damages and Comments stay optional here too, matching the manual forms.
+const REQUIRED_DB_FIELDS = [
+  { key: "citation",           label: "Citation" },
+  { key: "cause_of_action",    label: "Cause of action" },
+  { key: "filing_date",        label: "Filing date" },
+  { key: "customer_name",      label: "Customer Name" },
+  { key: "quantum",            label: "Quantum" },
+  { key: "legal_provision",    label: "Loan Account Number" },
+  { key: "estimated_legal_fees", label: "Estimated legal fees" },
+  { key: "case_stage",         label: "Case stage" },
+  { key: "case_current_state", label: "Case current state" },
+  { key: "case_category",      label: "Case category" },
+  { key: "matter_type",        label: "Matter type" },
+  { key: "law_firm",           label: "Law firm" },
+  { key: "forum",              label: "Forum" },
+  { key: "in_charge_counsel",  label: "In-charge counsel" },
+  { key: "assigned_counsel",   label: "Assigned counsel" },
+  { key: "cost_center",        label: "Cost center" },
+  { key: "when_created",       label: "When created" },
+];
+
+// Maps a normalized spreadsheet column header to the internal DB field key.
+// Add more aliases here if staff use slightly different header wording.
+const IMPORT_HEADER_ALIASES = {
+  "citation": "citation",
+  "customer name": "customer_name",
+  "customer_name": "customer_name",
+  "quantum": "quantum",
+  "quantum (ugx)": "quantum",
+  "loan account number": "legal_provision",
+  "loan account no": "legal_provision",
+  "loan account no.": "legal_provision",
+  "account number": "legal_provision",
+  "estimated legal fees": "estimated_legal_fees",
+  "estimated legal fees (ugx)": "estimated_legal_fees",
+  "damages": "damages",
+  "damages (ugx)": "damages",
+  "filing date": "filing_date",
+  "filling date": "filing_date",
+  "law firm": "law_firm",
+  "cause of action": "cause_of_action",
+  "case stage": "case_stage",
+  "matter type": "matter_type",
+  "cost center": "cost_center",
+  "forum": "forum",
+  "in charge counsel": "in_charge_counsel",
+  "in-charge counsel": "in_charge_counsel",
+  "assigned counsel": "assigned_counsel",
+  "case category": "case_category",
+  "case current state": "case_current_state",
+  "when created": "when_created",
+  "whencreated": "when_created",
+  "comments": "comments",
+};
+
+function normalizeHeader(h) {
+  return (h ?? "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function excelDateToISO(val) {
+  if (val == null || val === "") return null;
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const y = val.getFullYear(), m = String(val.getMonth() + 1).padStart(2, "0"), d = String(val.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear(), m = String(parsed.getMonth() + 1).padStart(2, "0"), d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+function parseNumericField(val) {
+  if (val === null || val === undefined || val === "") return null;
+  if (typeof val === "number") return val;
+  const cleaned = String(val).replace(/[, ]+/g, "");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
+// Converts one raw spreadsheet row (object keyed by original header text)
+// into a legal_cases-shaped object, using IMPORT_HEADER_ALIASES to match
+// headers regardless of exact wording/casing.
+function mapRawRowToCase(rawRow) {
+  const mapped = {};
+  Object.keys(rawRow).forEach((rawHeader) => {
+    const key = IMPORT_HEADER_ALIASES[normalizeHeader(rawHeader)];
+    if (!key) return; // unrecognized column, ignored
+    const rawVal = rawRow[rawHeader];
+    if (key === "filing_date" || key === "when_created") {
+      mapped[key] = excelDateToISO(rawVal);
+    } else if (key === "quantum" || key === "estimated_legal_fees" || key === "damages") {
+      mapped[key] = parseNumericField(rawVal);
+    } else {
+      const s = (rawVal ?? "").toString().trim();
+      mapped[key] = s === "" ? null : s;
+    }
+  });
+  return mapped;
+}
+
+// Validates one mapped row; returns an array of human-readable error strings
+// (empty array = valid). Normalizes case_stage against the known STAGES list.
+function validateImportRow(mapped) {
+  const errors = [];
+  REQUIRED_DB_FIELDS.forEach((f) => {
+    const v = mapped[f.key];
+    if (v === null || v === undefined || v === "") errors.push(`${f.label} is required`);
+  });
+  if (mapped.case_stage) {
+    const match = STAGES.find(s => s.toLowerCase() === String(mapped.case_stage).trim().toLowerCase());
+    if (!match) {
+      errors.push(`Case stage "${mapped.case_stage}" doesn't match any of: ${STAGES.join(", ")}`);
+    } else {
+      mapped.case_stage = match; // normalize to exact casing
+    }
+  }
+  if (mapped.filing_date === null && mapped.filing_date !== undefined) {
+    // excelDateToISO returned null from a non-empty, unparseable value
+  }
+  return errors;
+}
+
+function downloadImportTemplate() {
+  const headers = REQUIRED_DB_FIELDS.map(f => f.label).concat(["Damages", "Comments"]);
+  const example = [
+    "STANBIC BANK (U) LTD VERSUS JOHN DOE  CIVIL SUIT NO. 12 OF 2026",
+    "John Doe", "50000000", "123456789", "6000000",
+    "Pre-Trial", "CASE STILL OPEN", "BANK IS SUING", "CIVIL",
+    "H and G Advocates", "Chief Magistrate", "Musoke Christopher", "",
+    "PERSONAL & BUSINESS BANKING", "2026-01-15",
+    "", "",
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Cases");
+  XLSX.writeFile(wb, "legal_cases_import_template.xlsx");
+}
+
+function openBulkImportModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="drawer drawer-wide">
+      <div class="drawer-head">
+        <div><h3>Bulk import cases</h3><div class="acct-line">Upload an Excel (.xlsx/.xls) or CSV file</div></div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <p style="font-size:12.5px;color:var(--muted);">
+          Column headers should match the field names used in this app (e.g. "Customer Name", "Loan Account Number",
+          "Case Stage"). Unrecognized columns are ignored. Every field is required except Damages and Comments,
+          same as the Add case form.
+        </p>
+        <div class="actions-row" style="margin-top:0;">
+          <button class="btn btn-ghost" id="downloadTemplateBtn" style="padding:8px 14px;font-size:12.5px;">Download template</button>
+        </div>
+        <div class="field" style="margin-top:18px;">
+          <label>Choose file</label>
+          <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" />
+        </div>
+        <div id="importPreviewWrap"></div>
+        <div class="actions-row" id="importActionsRow" style="display:none;">
+          <button class="btn btn-primary" id="confirmImportBtn">Import valid rows</button>
+          <button class="btn btn-ghost" id="cancelImportBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#downloadTemplateBtn").onclick = downloadImportTemplate;
+
+  let parsedRows = []; // [{ mapped, errors }]
+
+  overlay.querySelector("#importFileInput").onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      let rawRows;
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      } catch (err) {
+        toast("Could not read that file: " + err.message, true);
+        return;
+      }
+      if (!rawRows || rawRows.length === 0) {
+        toast("No rows found in that file.", true);
+        return;
+      }
+      parsedRows = rawRows.map((raw) => {
+        const mapped = mapRawRowToCase(raw);
+        const errors = validateImportRow(mapped);
+        return { mapped, errors };
+      });
+      renderImportPreview(overlay, parsedRows);
+    };
+    reader.onerror = () => toast("Could not read that file.", true);
+    reader.readAsArrayBuffer(file);
+  };
+
+  overlay.querySelector("#cancelImportBtn").onclick = () => overlay.remove();
+
+  overlay.querySelector("#confirmImportBtn").onclick = async () => {
+    const validRows = parsedRows.filter(r => r.errors.length === 0);
+    if (validRows.length === 0) { toast("No valid rows to import.", true); return; }
+    const btn = overlay.querySelector("#confirmImportBtn");
+    btn.disabled = true;
+    btn.textContent = "Importing…";
+
+    const payloads = validRows.map(r => ({
+      ...r.mapped,
+      created_by: state.user.id,
+      created_by_name: state.user.full_name,
+      last_updated_by_name: state.user.full_name,
+    }));
+
+    const { error } = await sb.from("legal_cases").insert(payloads);
+    if (error) {
+      toast("Import failed: " + error.message, true);
+      btn.disabled = false;
+      btn.textContent = "Import valid rows";
+      return;
+    }
+    toast(`Imported ${validRows.length} case(s).`);
+    overlay.remove();
+    await loadCases();
+    renderDashboard();
+  };
+}
+
+function renderImportPreview(overlay, parsedRows) {
+  const wrap = overlay.querySelector("#importPreviewWrap");
+  const actionsRow = overlay.querySelector("#importActionsRow");
+  const validCount = parsedRows.filter(r => r.errors.length === 0).length;
+  const invalidCount = parsedRows.length - validCount;
+
+  wrap.innerHTML = `
+    <div class="section-label">Preview (${parsedRows.length} row${parsedRows.length === 1 ? "" : "s"} found — ${validCount} valid, ${invalidCount} with errors)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Citation</th>
+            <th>Customer Name</th>
+            <th>Stage</th>
+            <th>Filing Date</th>
+            <th>Quantum</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${parsedRows.map((r, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${esc(r.mapped.citation || "—")}</td>
+              <td>${esc(r.mapped.customer_name || "—")}</td>
+              <td>${esc(r.mapped.case_stage || "—")}</td>
+              <td>${esc(r.mapped.filing_date || "—")}</td>
+              <td>${r.mapped.quantum != null ? money(r.mapped.quantum) : "—"}</td>
+              <td>${r.errors.length === 0
+                ? `<span style="color:var(--green);font-weight:600;">Valid</span>`
+                : `<span style="color:var(--red);">${r.errors.map(esc).join("; ")}</span>`}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  actionsRow.style.display = "flex";
+  overlay.querySelector("#confirmImportBtn").textContent = `Import ${validCount} valid row${validCount === 1 ? "" : "s"}`;
+  overlay.querySelector("#confirmImportBtn").disabled = validCount === 0;
 }
 
 // ---------- new case modal ----------
