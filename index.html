@@ -380,6 +380,13 @@ tbody tr:hover { background: #fafbfc; cursor: pointer; }
 .stage-Archived { background: #e3efe7; color: var(--green); }
 .stage-Archived::before { background: var(--green); }
 
+.doc-YES { background: #e3efe7; color: var(--green); }
+.doc-YES::before { background: var(--green); }
+.doc-NO { background: #fbeceb; color: var(--red); }
+.doc-NO::before { background: var(--red); }
+.doc-PARTIAL { background: #fdf6e8; color: var(--amber); }
+.doc-PARTIAL::before { background: var(--amber); }
+
 .status-pill {
   font-size: 11px;
   color: var(--muted);
@@ -633,11 +640,15 @@ const COST_CENTERS = ["BUSINESS BANKING", "PERSONAL & BUSINESS BANKING", "CORPOR
 const FORUMS = ["Chief Magistrate", "High Court", "Court of Appeal", "Supreme Court", "Tribunal"];
 const CASE_CATEGORIES = ["BANK IS SUING", "BANK IS BEING SUED"];
 const CASE_CURRENT_STATES = ["CASE STILL OPEN", "CASE CLOSED"];
+const DOC_AVAILABILITY = ["YES", "NO", "PARTIAL"];
 
 let state = {
   user: null,
+  currentView: "legal", // "legal" | "secured"
   cases: [],
   filters: { search: "", stage: "", state: "CASE STILL OPEN", createdFrom: "", createdTo: "", nextActionFrom: "", nextActionTo: "" },
+  securedCases: [],
+  securedFilters: { search: "" },
 };
 
 const root = document.getElementById("app");
@@ -905,7 +916,7 @@ const DEBUG_SKIP_LOGIN = false;
 async function init() {
   if (DEBUG_SKIP_LOGIN) {
     state.user = { id: null, username: "debug", full_name: "Edgar (Debug Mode)", role: "admin" };
-    await loadCases();
+    await Promise.all([loadCases(), loadSecuredCases()]);
     renderApp();
     return;
   }
@@ -917,7 +928,7 @@ async function init() {
       const { data } = await sb.from("app_users").select("id,username,full_name,role").eq("id", u.id).single();
       if (data) {
         state.user = data;
-        await loadCases();
+        await Promise.all([loadCases(), loadSecuredCases()]);
         renderApp();
         return;
       }
@@ -982,7 +993,7 @@ async function doLogin() {
   }
   state.user = data;
   localStorage.setItem("legal_tracker_session", JSON.stringify({ id: data.id }));
-  await loadCases();
+  await Promise.all([loadCases(), loadSecuredCases()]);
   renderApp();
 }
 
@@ -990,6 +1001,7 @@ async function doLogout() {
   localStorage.removeItem("legal_tracker_session");
   state.user = null;
   state.cases = [];
+  state.securedCases = [];
   renderLogin();
 }
 
@@ -1021,6 +1033,12 @@ async function loadCases() {
   }
 
   state.cases = cases;
+}
+
+async function loadSecuredCases() {
+  const { data, error } = await sb.from("secured_cases").select("*").order("updated_at", { ascending: false });
+  if (error) { toast("Could not load secured cases: " + error.message, true); return; }
+  state.securedCases = data || [];
 }
 
 async function loadHistory(caseId) {
@@ -1171,6 +1189,28 @@ function computeStats(rows) {
 }
 
 function renderDashboard() {
+  if (state.currentView === "secured") {
+    renderSecuredView();
+  } else {
+    renderLegalView();
+  }
+}
+
+function viewSwitcherHtml() {
+  return `
+    <select id="viewSwitcher" style="font-weight:600;">
+      <option value="legal" ${state.currentView !== "secured" ? "selected" : ""}>Legal Cases</option>
+      <option value="secured" ${state.currentView === "secured" ? "selected" : ""}>Secured Cases</option>
+    </select>
+  `;
+}
+
+function wireViewSwitcher() {
+  const sel = document.getElementById("viewSwitcher");
+  if (sel) sel.onchange = (e) => { state.currentView = e.target.value; renderDashboard(); };
+}
+
+function renderLegalView() {
   const main = document.getElementById("main");
   const rows = visibleCases();
   const { counts, totalQuantum, totalFees } = computeStats(rows);
@@ -1181,7 +1221,8 @@ function renderDashboard() {
         <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
         <h2>Legal Cases</h2>
       </div>
-      <div style="display:flex; gap:10px;">
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${viewSwitcherHtml()}
         ${state.user.role === "admin" ? `<button class="btn btn-ghost" id="bulkImportBtn">Bulk import</button>` : ""}
         ${canEdit() ? `<button class="btn btn-gold" id="newCaseBtn">+ Add case</button>` : ""}
       </div>
@@ -1285,10 +1326,355 @@ function renderDashboard() {
     refreshTableOnly();
   };
   wireCaseRowHandlers();
+  wireViewSwitcher();
+}
+
+// ---------- secured cases ----------
+
+function computeSecuredStats(rows) {
+  const totalQuantum = rows.reduce((sum, c) => sum + (Number(c.quantum) || 0), 0);
+  const docCounts = DOC_AVAILABILITY.reduce((acc, d) => { acc[d] = rows.filter(c => c.documents_availability === d).length; return acc; }, {});
+  return { totalQuantum, docCounts };
+}
+
+function visibleSecuredCases() {
+  const f = state.securedFilters;
+  return state.securedCases.filter((c) => {
+    if (f.search) {
+      const s = f.search.toLowerCase();
+      const hay = `${c.customer_name || ""} ${c.loan_account_number || ""} ${c.law_firm || ""}`.toLowerCase();
+      if (!hay.includes(s)) return false;
+    }
+    return true;
+  });
+}
+
+function docAvailabilityBadge(val) {
+  if (!val) return `<span style="color:var(--muted);">—</span>`;
+  return `<span class="badge doc-${cls(val)}">${esc(val)}</span>`;
+}
+
+function renderSecuredRowsHtml(rows) {
+  if (rows.length === 0) {
+    return `<tr class="empty-row"><td colspan="${canEdit() ? 7 : 6}">No secured cases match these filters.</td></tr>`;
+  }
+  return rows.map(c => `
+              <tr data-id="${c.id}">
+                <td>${esc(c.customer_name) || "—"}</td>
+                <td class="acct">${esc(c.loan_account_number) || "—"}</td>
+                <td>${esc(c.law_firm || "—")}</td>
+                <td>${money(c.quantum)}</td>
+                <td>${docAvailabilityBadge(c.documents_availability)}</td>
+                <td>${esc(c.comments || "—")}</td>
+                ${canEdit() ? `
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn securedRowEditBtn" data-id="${c.id}" title="Edit">${EDIT_ICON_SVG}</button>
+                    <button class="icon-btn danger securedRowDeleteBtn" data-id="${c.id}" data-name="${esc(c.customer_name || "this record")}" title="Delete">${DELETE_ICON_SVG}</button>
+                  </div>
+                </td>
+                ` : ""}
+              </tr>
+            `).join("");
+}
+
+function wireSecuredRowHandlers() {
+  document.querySelectorAll(".securedRowEditBtn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const c = state.securedCases.find(x => x.id === btn.dataset.id);
+      if (c) openEditSecuredCaseModal(c);
+    };
+  });
+  document.querySelectorAll(".securedRowDeleteBtn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      deleteSecuredCase(btn.dataset.id, btn.dataset.name);
+    };
+  });
+}
+
+function refreshSecuredTableOnly() {
+  const rows = visibleSecuredCases();
+  const tbody = document.getElementById("securedRows");
+  const countEl = document.getElementById("securedShownCount");
+  if (countEl) countEl.textContent = `${rows.length} of ${state.securedCases.length} shown`;
+  if (tbody) {
+    tbody.innerHTML = renderSecuredRowsHtml(rows);
+    wireSecuredRowHandlers();
+  }
+  const { totalQuantum, docCounts } = computeSecuredStats(rows);
+  const totalEl = document.getElementById("securedStatTotal");
+  if (totalEl) totalEl.textContent = rows.length;
+  const quantumEl = document.getElementById("securedStatQuantum");
+  if (quantumEl) quantumEl.textContent = money(totalQuantum);
+  DOC_AVAILABILITY.forEach(d => {
+    const el = document.getElementById(`securedStatDoc-${d}`);
+    if (el) el.textContent = docCounts[d] || 0;
+  });
+}
+
+function exportSecuredCasesToCSV(rows) {
+  if (!rows || rows.length === 0) { toast("No secured cases to export with the current filters.", true); return; }
+  const columns = [
+    { key: "customer_name", header: "Customer Name" },
+    { key: "loan_account_number", header: "Loan Account Number" },
+    { key: "law_firm", header: "Law Firm" },
+    { key: "quantum", header: "Quantum" },
+    { key: "documents_availability", header: "Documents Availability" },
+    { key: "comments", header: "Comments" },
+    { key: "created_by_name", header: "Entered By" },
+    { key: "last_updated_by_name", header: "Last Updated By" },
+    { key: "updated_at", header: "Updated On" },
+  ];
+  const header = columns.map(c => c.header).map(csvEscape).join(",");
+  const lines = rows.map(c => columns.map(col => csvEscape(c[col.key])).join(","));
+  const csv = [header, ...lines].join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `secured_cases_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} secured case(s) to CSV.`);
+}
+
+function renderSecuredView() {
+  const main = document.getElementById("main");
+  const rows = visibleSecuredCases();
+  const { totalQuantum, docCounts } = computeSecuredStats(rows);
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Recoveries &amp; Rehabilitation</div>
+        <h2>Secured Cases</h2>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${viewSwitcherHtml()}
+        ${canEdit() ? `<button class="btn btn-gold" id="newSecuredCaseBtn">+ Add secured case</button>` : ""}
+      </div>
+    </div>
+
+    <div class="stat-row" id="securedStatRow">
+      <div class="stat-card total">
+        <div class="n" id="securedStatTotal">${rows.length}</div>
+        <div class="l">Total secured cases</div>
+        <div class="stat-bar" style="background:var(--navy-deep);"></div>
+      </div>
+      <div class="stat-card accent">
+        <div class="n" id="securedStatQuantum">${money(totalQuantum)}</div>
+        <div class="l">Total quantum</div>
+        <div class="stat-bar" style="background:var(--gold);"></div>
+      </div>
+      <div class="stat-card">
+        <div class="n" id="securedStatDoc-YES">${docCounts.YES || 0}</div>
+        <div class="l">Documents: Yes</div>
+        <div class="stat-bar" style="background:var(--green);"></div>
+      </div>
+      <div class="stat-card">
+        <div class="n" id="securedStatDoc-PARTIAL">${docCounts.PARTIAL || 0}</div>
+        <div class="l">Documents: Partial</div>
+        <div class="stat-bar" style="background:var(--amber);"></div>
+      </div>
+      <div class="stat-card">
+        <div class="n" id="securedStatDoc-NO">${docCounts.NO || 0}</div>
+        <div class="l">Documents: No</div>
+        <div class="stat-bar" style="background:var(--red);"></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="securedSearchBox" placeholder="Search customer name, law firm, account number..." value="${esc(state.securedFilters.search)}" />
+      <div class="spacer"></div>
+      <span id="securedShownCount" style="font-size:12px;color:var(--muted)">${rows.length} of ${state.securedCases.length} shown</span>
+      <button class="btn btn-ghost" id="exportSecuredCsvBtn" style="padding:6px 12px;font-size:12.5px;">Export CSV</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="secured-table">
+        <thead>
+          <tr>
+            <th>Customer Name</th>
+            <th>Loan Account No.</th>
+            <th>Law Firm</th>
+            <th>Quantum</th>
+            <th>Documents Availability</th>
+            <th>Comments</th>
+            ${canEdit() ? `<th></th>` : ""}
+          </tr>
+        </thead>
+        <tbody id="securedRows">${renderSecuredRowsHtml(rows)}</tbody>
+      </table>
+    </div>
+  `;
+
+  if (canEdit()) document.getElementById("newSecuredCaseBtn").onclick = openNewSecuredCaseModal;
+  document.getElementById("securedSearchBox").oninput = (e) => { state.securedFilters.search = e.target.value; refreshSecuredTableOnly(); };
+  document.getElementById("exportSecuredCsvBtn").onclick = () => exportSecuredCasesToCSV(visibleSecuredCases());
+  wireSecuredRowHandlers();
+  wireViewSwitcher();
+}
+
+// Damages/Comments-style optional field: only Comments is optional here.
+const SECURED_REQUIRED_FIELD_DEFS = [
+  { id: "customer_name",          label: "Customer Name" },
+  { id: "loan_account_number",    label: "Loan Account No." },
+  { id: "law_firm",               label: "Law Firm" },
+  { id: "quantum",                label: "Quantum" },
+  { id: "documents_availability", label: "Documents Availability" },
+];
+
+function validateSecuredRequiredFields(prefix) {
+  for (const f of SECURED_REQUIRED_FIELD_DEFS) {
+    const el = document.getElementById(prefix + f.id);
+    if (!el) continue;
+    const val = (el.value || "").trim();
+    if (!val) {
+      el.focus();
+      if (el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      toast(`${f.label} is required.`, true);
+      return false;
+    }
+  }
+  return true;
+}
+
+function openNewSecuredCaseModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div>
+          <h3>Add secured case</h3>
+          <div class="acct-line">New secured case record</div>
+        </div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field full"><label>Customer Name *</label><input id="sn_customer_name" required /></div>
+          <div class="field"><label>Loan Account No. *</label><input id="sn_loan_account_number" required /></div>
+          <div class="field"><label>Quantum (UGX) *</label><input type="number" id="sn_quantum" required /></div>
+          <div class="field"><label>Law Firm *</label>
+            <select id="sn_law_firm" required><option value="">— Select —</option>${LAW_FIRMS.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Documents Availability *</label>
+            <select id="sn_documents_availability" required>
+              <option value="">— Select —</option>
+              ${DOC_AVAILABILITY.map(d => `<option value="${d}">${d}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field full"><label>Comments</label><textarea id="sn_comments"></textarea></div>
+        </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="saveSecuredCase">Create record</button>
+          <button class="btn btn-ghost" id="cancelSecuredCase">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelSecuredCase").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#saveSecuredCase").onclick = async () => {
+    if (!validateSecuredRequiredFields("sn_")) return;
+    const payload = {
+      customer_name: document.getElementById("sn_customer_name").value.trim(),
+      loan_account_number: document.getElementById("sn_loan_account_number").value.trim(),
+      law_firm: document.getElementById("sn_law_firm").value.trim(),
+      quantum: parseFloat(document.getElementById("sn_quantum").value) || null,
+      documents_availability: document.getElementById("sn_documents_availability").value.trim(),
+      comments: document.getElementById("sn_comments").value.trim() || null,
+      created_by: state.user.id,
+      created_by_name: state.user.full_name,
+      last_updated_by_name: state.user.full_name,
+    };
+    const { error } = await sb.from("secured_cases").insert(payload);
+    if (error) { toast("Could not save secured case: " + error.message, true); return; }
+    overlay.remove();
+    toast("Secured case created.");
+    await loadSecuredCases();
+    renderDashboard();
+  };
+}
+
+function openEditSecuredCaseModal(c) {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay center";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-head">
+        <div>
+          <h3>Edit secured case</h3>
+          <div class="acct-line">${esc(c.customer_name || "—")}</div>
+        </div>
+        <button class="close-x">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field full"><label>Customer Name *</label><input id="se_customer_name" value="${esc(c.customer_name || "")}" required /></div>
+          <div class="field"><label>Loan Account No. *</label><input id="se_loan_account_number" value="${esc(c.loan_account_number || "")}" required /></div>
+          <div class="field"><label>Quantum (UGX) *</label><input type="number" id="se_quantum" value="${c.quantum ?? ""}" required /></div>
+          <div class="field"><label>Law Firm *</label>
+            <select id="se_law_firm" required><option value="">— Select —</option>${LAW_FIRMS.map(s => `<option value="${esc(s)}" ${s === c.law_firm ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Documents Availability *</label>
+            <select id="se_documents_availability" required>
+              <option value="">— Select —</option>
+              ${DOC_AVAILABILITY.map(d => `<option value="${d}" ${d === c.documents_availability ? "selected" : ""}>${d}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field full"><label>Comments</label><textarea id="se_comments">${esc(c.comments || "")}</textarea></div>
+        </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" id="saveSecuredEdit">Save changes</button>
+          <button class="btn btn-ghost" id="cancelSecuredEdit">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").onclick = () => overlay.remove();
+  overlay.querySelector("#cancelSecuredEdit").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.querySelector("#saveSecuredEdit").onclick = async () => {
+    if (!validateSecuredRequiredFields("se_")) return;
+    const payload = {
+      customer_name: document.getElementById("se_customer_name").value.trim(),
+      loan_account_number: document.getElementById("se_loan_account_number").value.trim(),
+      law_firm: document.getElementById("se_law_firm").value.trim(),
+      quantum: parseFloat(document.getElementById("se_quantum").value) || null,
+      documents_availability: document.getElementById("se_documents_availability").value.trim(),
+      comments: document.getElementById("se_comments").value.trim() || null,
+      last_updated_by_name: state.user.full_name,
+    };
+    const { error } = await sb.from("secured_cases").update(payload).eq("id", c.id);
+    if (error) { toast("Could not save changes: " + error.message, true); return; }
+    overlay.remove();
+    toast("Secured case updated.");
+    await loadSecuredCases();
+    renderDashboard();
+  };
+}
+
+async function deleteSecuredCase(id, name) {
+  if (!confirm(`Delete this secured case record?\n\n${name}\n\nThis cannot be undone.`)) return;
+  const { error } = await sb.from("secured_cases").delete().eq("id", id);
+  if (error) { toast("Could not delete: " + error.message, true); return; }
+  toast("Secured case deleted.");
+  await loadSecuredCases();
+  renderDashboard();
 }
 
 // ---------- bulk import (admin only) ----------
-
 // DB column keys (not form ids) for validating imported rows. Mirrors
 // REQUIRED_FIELD_DEFS above but keyed to the actual legal_cases columns.
 // Damages and Comments stay optional here too, matching the manual forms.
